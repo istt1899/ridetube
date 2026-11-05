@@ -1,5 +1,9 @@
 # RideTube
 
+> **Fork 0.3.8:** experimental Cyrillic-title and playback-error fixes; not tested on a car. The application ID is unchanged, so this can upgrade an existing RideTube installation. See [release notes](RELEASE-NOTES-RU.md) and the [technical specification](TECHNICAL-SPEC-RU.md). This fork is based on `25af2acee82d2a1c8140c25870a76f501f878af9`; upstream project and author credits remain below.
+
+> **Fork install:** add `istt1899/ridetube:releases` and `JustAnotherPU/mgu-apps:releases` as sources in MGU Store. The daemon package is the unchanged upstream 0.3.8 release. The original installation instructions below refer to the upstream project.
+
 > **Experimental and unofficial.** RideTube is an unofficial client for YouTube. It is not affiliated with,
 > endorsed by or sponsored by Google or YouTube. Use it at your own risk. You are responsible for following
 > YouTube's Terms of Service and the laws of your country, and for using it safely: by default the picture

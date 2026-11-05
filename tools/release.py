@@ -13,7 +13,7 @@ release. For a private repository, list the assets' API URLs instead (docs/PUBLI
 import argparse, gzip, hashlib, io, json, os, shutil, sys, tarfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REPO = 'JustAnotherPU/ridetube'
+REPO = 'istt1899/ridetube'
 APP = 'jap_ridetube'
 TOOLS = ('jap-ridetube-d',)
 

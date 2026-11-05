@@ -46,9 +46,14 @@ function fakeDaemon(sock) {
     return new Promise((r) => d.server.listen(sock, () => r(d)));
 }
 
+// Windows Node cannot bind a Unix socket path; use a private named pipe there.
+function socketPath(dir) {
+    return process.platform === 'win32' ? '\\\\.\\pipe\\ridetube-' + path.basename(dir) : path.join(dir, 'ctl.sock');
+}
+
 async function clientAndModel() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'yt-'));
-    const sock = path.join(dir, 'ctl.sock');
+    const sock = socketPath(dir);
     const d = await fakeDaemon(sock);
     const ctl = new Ctl(sock, quiet);
     const m = new Model((o) => ctl.send(o));
@@ -266,7 +271,7 @@ async function appFrames() {
     const stage = path.join(__dirname, '..', '..', 'dist', 'jap_ridetube');
     if (!fs.existsSync(path.join(stage, 'source', 'javascript', 'app.js'))) { console.log('skip app frames (python3 kit/tools/build.py jap_ridetube first)'); return; }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'yt-app-'));
-    const sock = path.join(dir, 'ctl.sock'), file = path.join(dir, 'stream.bin');
+    const sock = socketPath(dir), file = path.join(dir, 'stream.bin');
     const d = await fakeDaemon(sock);
     process.env.MGU_YT_SOCKET = sock;
     process.env.MGU_RENDERD_FILE = file;
@@ -399,10 +404,15 @@ async function appFrames() {
         const seeks = d.cmds('seek').length;
         await sleep(300); await hu.loopFn();                 // (an unchanged model redraws within 250 ms)
         assert.ok(!frame().vrect, 'no video while driving');
-        // Video while driving on (a car coded for video in motion): the picture stays while moving
+        // Enabling while moving must not switch video on. It must be enabled while parked.
         hu.ctx.settings.set('video_driving', true);
         await sleep(300); await hu.loopFn();
-        assert.ok(frame().vrect, 'Video while driving: video while moving');
+        assert.ok(!frame().vrect, 'switching the setting on while moving keeps video off');
+        speedH({ speedVehicleCentreOfGravity: 0 });
+        await sleep(300); await hu.loopFn();
+        speedH({ speedVehicleCentreOfGravity: 50 * 64 });
+        await sleep(300); await hu.loopFn();
+        assert.ok(frame().vrect, 'setting enabled while parked: video stays available while moving');
         assert.deepStrictEqual(d.cmds('video').slice(-1)[0], { cmd: 'video', on: true }, 'Video while driving: video on');
         hu.ctx.settings.set('video_driving', false);
         await sleep(300); await hu.loopFn();

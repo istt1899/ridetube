@@ -260,7 +260,13 @@ class Model {
         this.id = id; this.title = r ? String(r.title || '') : ''; this.channel = r ? String(r.channel || '') : ''; this.state = 'preparing'; this.pct = 0; this.elapsed = 0; this.total = 0; this.error = null; this.retry = 0;
         this._changed();
         // the account's own resume point (the tile's), used by the daemon when this car never played it
-        return this.send(Object.assign({ cmd: 'play', id, rect, fill: !!fill }, r && r.start_s > 0 ? { at: r.start_s * 1000 } : {}, o || {}));
+        const sent = this.send(Object.assign({ cmd: 'play', id, rect, fill: !!fill }, r && r.start_s > 0 ? { at: r.start_s * 1000 } : {}, o || {}));
+        if (!sent) {
+            this.state = 'error';
+            this.error = 'The RideTube service is not connected. Check the service and try again.';
+            this._changed();
+        }
+        return sent;
     }
     toggle() {
         if (this.state === 'playing') return this.send({ cmd: 'pause' });
