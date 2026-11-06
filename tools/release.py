@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Lays out the MGU Store catalog of this repository in dist/release/: catalog.json, the app's OAP package
 (without node_modules/oap-sdk: the head unit makes it from an app already on the car), the service's tool kit
-and the app icon. jap-node22 (required by jap-ridetube-d) comes from the JustAnotherPU/mgu-apps source. Upload every file of dist/release/ as an asset of a GitHub release tagged `catalog`.
+and the app icon. The catalog also lists jap-node22 from its verified upstream release,
+so the Store can resolve RideTube's runtime from this source alone. Upload every file of dist/release/ as an asset of a GitHub release tagged `catalog`.
 
 Build first:  python3 kit/tools/build.py jap_ridetube                      (dist/jap_ridetube@<v>.tgz)
               (cd native/ytdec && make target)
@@ -88,6 +89,13 @@ def main():
              'artifact': artifact(os.path.join(out, '%s@%s.tgz' % (t, c['version'])), a.base),
              'requires': c.get('requires', {}), 'uninstallable': bool(c.get('uninstallable')), 'mguHmi': c.get('mguHmi', ['ID7'])}
         comps.append(e)
+    providers = json.load(open(os.path.join(ROOT, 'tools', 'runtime-providers.json')))
+    for provider in providers:
+        assert provider['id'] == 'jap-node22' and provider['kind'] == 'tool'
+        assert provider['artifact']['url'].startswith('https://github.com/JustAnotherPU/mgu-apps/releases/download/')
+        assert not any(c['id'] == provider['id'] for c in comps)
+        assert tuple(map(int, provider['version'].split('.'))) >= tuple(map(int, tools['jap-ridetube-d']['requires'][provider['id']].split('.')))
+        comps.append(provider)
     with open(os.path.join(out, 'catalog.json'), 'w') as f:
         json.dump({'schema': 2, 'components': comps}, f, indent=2)
         f.write('\n')

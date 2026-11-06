@@ -122,3 +122,7 @@ The tests need Node 18 or newer, Python 3.12 and ffmpeg.
 GPL-3.0-or-later, Copyright (c) 2026 JustAnotherPU ([LICENSE](LICENSE)). Parts come from others under their
 own licences (the app kit: MIT; parts of `native/ytdec`: GPL-3.0-or-later; yt-dlp: Unlicense, fetched at
 build time; SponsorBlock data: CC BY-NC-SA 4.0): see [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
+
+## Fork installation repair
+
+The `istt1899/ridetube` Releases catalog includes a pinned `jap-node22` provider from the official `JustAnotherPU/mgu-apps` release. The Store can install the required Node.js runtime from the same source. Refresh the source with Check now, then retry RideTube installation. The runtime does not replace the system Node used by BMW apps. The provider archive checksum was verified before publication.
