@@ -2,7 +2,7 @@
 
 > **Fork 0.3.9:** Cyrillic-title and playback-error fixes, plus car-internet diagnosis and a more resilient YouTube sign-in; not yet tested on a car. The application ID is unchanged, so this can upgrade an existing RideTube installation. See [release notes](RELEASE-NOTES-RU.md) and the [technical specification](TECHNICAL-SPEC-RU.md). This fork is based on `25af2acee82d2a1c8140c25870a76f501f878af9`; upstream project and author credits remain below.
 
-> **Fork install:** the local 0.3.9 packages can be installed through the MGU Store USB page. Once this version is published, add `istt1899/ridetube:releases` and `JustAnotherPU/mgu-apps:releases` as sources in MGU Store and update both RideTube and its service. The original installation instructions below refer to the upstream project.
+> **Fork install:** in MGU Store, refresh the existing `istt1899/ridetube` Releases source with **Settings → Check now**, then update RideTube. The Store installs the matching 0.3.9 service and its declared dependencies. The original installation instructions below refer to the upstream project.
 
 > **Local USB build:** `python kit/tools/build.py jap_ridetube`, `python tools/repack_service.py --base <verified upstream 0.3.8 service tgz>`, then `python tools/release.py`. The repacker changes the service JavaScript and manifest; it checks and reuses the original yt-dlp and decoder binaries byte for byte. The resulting `dist/release/` catalog can be copied to `mgu-repo/ridetube/` on a USB stick with artifact URLs made relative to that folder. Check the Store's Internet status before signing in.
 
@@ -125,3 +125,9 @@ The tests need Node 18 or newer, Python 3.12 and ffmpeg.
 GPL-3.0-or-later, Copyright (c) 2026 JustAnotherPU ([LICENSE](LICENSE)). Parts come from others under their
 own licences (the app kit: MIT; parts of `native/ytdec`: GPL-3.0-or-later; yt-dlp: Unlicense, fetched at
 build time; SponsorBlock data: CC BY-NC-SA 4.0): see [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
+
+## Fork installation repair
+
+The `istt1899/ridetube` Releases catalog includes a pinned `jap-node22` provider from the official `JustAnotherPU/mgu-apps` release. The Store can install the required Node.js runtime from the same source. Refresh the source with Check now, then retry RideTube installation. The runtime does not replace the system Node used by BMW apps. The provider archive checksum was verified before publication.
+
+If the GitHub Releases source does not refresh, use the direct HTTPS catalog: `https://raw.githubusercontent.com/istt1899/ridetube/main/catalog.json`. It lists the same app, service and runtime with the same checked artifact hashes.
