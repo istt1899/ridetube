@@ -33,9 +33,9 @@ class RepackServiceTest(unittest.TestCase):
     def test_rejects_unexpected_source_change(self):
         source = repack.declared_files(json.loads((repack.COMPONENT / 'component.json').read_bytes()))
         with tempfile.TemporaryDirectory() as temp:
-            changed = Path(temp) / 'thumb.js'
+            changed = Path(temp) / 'decoder.js'
             changed.write_bytes(b'unexpected edit\n')
-            source['files/thumb.js'] = changed
+            source['files/vendor/jpeg-js/decoder.js'] = changed
             with mock.patch.object(repack, 'declared_files', return_value=source):
                 with self.assertRaisesRegex(ValueError, 'unchanged source differs'):
                     repack.prepare(repack.DEFAULT_BASE)
