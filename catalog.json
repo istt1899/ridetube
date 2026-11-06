@@ -1,0 +1,74 @@
+{
+  "schema": 2,
+  "components": [
+    {
+      "id": "jap_ridetube",
+      "kind": "app",
+      "title": "RideTube",
+      "description": "Video in the car: an unofficial client for YouTube. Your Home, Subscriptions and Watch later (signed in on the car), search, channels and chapters; the sound through the car's media player, the picture only while parked (a podcast view while driving). Needs the jap-ridetube-d tool.",
+      "version": "0.3.8",
+      "artifact": {
+        "name": "jap_ridetube@0.3.8.tgz",
+        "size": 1286545,
+        "sha256": "5b03c5768afa978747f4bca16a855ec29750a0fc45a70658aaf53ed28cec2c19",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube@0.3.8.tgz"
+      },
+      "requires": {
+        "jap-ridetube-d": "0.3.8",
+        "mgu-render": "0.6.11",
+        "mgu-inputgate": "1.0.0"
+      },
+      "uninstallable": true,
+      "mguHmi": [
+        "ID7"
+      ],
+      "icon": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube.png",
+      "iconSha256": "afbf63c28de964d4f249f062bdbddf853fe1e676cc8d62f59028ea0f1c6a9876"
+    },
+    {
+      "id": "jap-ridetube-d",
+      "kind": "tool",
+      "title": "RideTube service",
+      "description": "The car side of RideTube, an unofficial client for YouTube: yt-dlp (from its official release, run in mgu-python) fetches as the daemon's own internet uid; search, feeds and thumbnails on the car (jap-node22); audio through the BMW MediaPlayer, video decoded by ytdec into the mgu-render video layer; TV device sign-in; controlled by the RideTube app over /run/jap-ridetube-d/ctl.sock",
+      "version": "0.3.8",
+      "artifact": {
+        "name": "jap-ridetube-d@0.3.8.tgz",
+        "size": 8777349,
+        "sha256": "627db11ddd499581f84f79f9c3fdd7fb868ac8399bdf0f7c4660d77f4a317147",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.3.8.tgz"
+      },
+      "requires": {
+        "mgu-deploy": "0.7.0",
+        "mgu-python": "1.0.2",
+        "jap-node22": "22.23.4",
+        "mgu-render": "0.6.11"
+      },
+      "uninstallable": true,
+      "mguHmi": [
+        "ID7"
+      ]
+    },
+    {
+      "id": "jap-node22",
+      "kind": "tool",
+      "title": "Node.js 22",
+      "description": "Node.js 22 LTS for the background services of Moonride and RideTube (BMW's apps keep the system Node 8)",
+      "author": "JustAnotherPU",
+      "version": "22.23.4",
+      "artifact": {
+        "name": "jap-node22@22.23.4.tgz",
+        "size": 49203293,
+        "sha256": "c62a8e2a3803b858b4d1020cb19746c8bd9ae8b753145f80c5adf7d781692743",
+        "url": "https://github.com/JustAnotherPU/mgu-apps/releases/download/catalog/jap-node22@22.23.4.tgz"
+      },
+      "requires": {
+        "mgu-deploy": "0.7.0"
+      },
+      "uninstallable": true,
+      "mguHmi": [
+        "ID7"
+      ],
+      "optional": true
+    }
+  ]
+}

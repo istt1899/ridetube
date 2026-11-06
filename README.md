@@ -126,3 +126,5 @@ build time; SponsorBlock data: CC BY-NC-SA 4.0): see [THIRD_PARTY_LICENSES](THIR
 ## Fork installation repair
 
 The `istt1899/ridetube` Releases catalog includes a pinned `jap-node22` provider from the official `JustAnotherPU/mgu-apps` release. The Store can install the required Node.js runtime from the same source. Refresh the source with Check now, then retry RideTube installation. The runtime does not replace the system Node used by BMW apps. The provider archive checksum was verified before publication.
+
+If the GitHub Releases source does not refresh, use the direct HTTPS catalog: `https://raw.githubusercontent.com/istt1899/ridetube/main/catalog.json`. It lists the same app, service and runtime with the same checked artifact hashes.

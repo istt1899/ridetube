@@ -99,6 +99,14 @@ def main():
     with open(os.path.join(out, 'catalog.json'), 'w') as f:
         json.dump({'schema': 2, 'components': comps}, f, indent=2)
         f.write('\n')
+    # Also readable as a plain HTTPS source, independently of release caches.
+    direct = json.loads(json.dumps({'schema': 2, 'components': comps}))
+    for component in direct['components']:
+        if component.get('icon') and not component['icon'].startswith('https://'):
+            component['icon'] = a.base + component['icon']
+    with open(os.path.join(ROOT, 'catalog.json'), 'w') as f:
+        json.dump(direct, f, indent=2)
+        f.write('\n')
     for n in sorted(os.listdir(out)):
         print('%10d  %s' % (os.path.getsize(os.path.join(out, n)), n))
 
