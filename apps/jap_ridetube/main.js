@@ -638,9 +638,20 @@ mgu.run({
             const a = model.auth;
             // a code expired or refused, or signed out: a new one only when asked (a tap, or Sign in in the menu)
             if (a.state === 'error' || a.state === 'signed_out') {
-                say(cv, a.state === 'error' ? 'Sign-in is not available (' + (a.msg || 'error') + ') - tap to try again'
-                    : cv.own ? 'Tap here to get a sign-in code' : 'Sign in (menu) to get a sign-in code',
-                'Your Home, Subscriptions and Watch later, on the car');
+                let title = cv.own ? 'Tap here to get a sign-in code' : 'Sign in (menu) to get a sign-in code';
+                let hint = 'Your Home, Subscriptions and Watch later, on the car';
+                if (a.state === 'error') {
+                    if (/car internet is offline/.test(a.msg || '')) {
+                        title = 'Car internet is offline';
+                        hint = 'Connect in MGU Store > Settings > Internet, then tap to retry';
+                    } else if (/timeout/.test(a.msg || '')) {
+                        title = 'YouTube did not answer';
+                        hint = 'Check the car internet in MGU Store, then tap to retry';
+                    } else {
+                        title = 'Sign-in is not available (' + (a.msg || 'error') + ') - tap to retry';
+                    }
+                }
+                say(cv, title, hint);
                 if (cv.own) cv.target(MID - 520, 160, 1040, 200, () => model.authStart(true), 'signin', 16);
                 return;
             }

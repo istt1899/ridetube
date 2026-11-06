@@ -495,6 +495,16 @@ async function appFrames() {
     assert.ok(texts.indexOf('ABC-DEF-GHIJ') >= 0 && texts.indexOf('Enter this code on your phone') >= 0, texts.join('|'));
     assert.ok(rects.some((r) => r.w === 296 && r.h === 296 && r.c === '#ffffff'), 'the QR code on its white square (29 + 8 modules of 8 px)');
     assert.ok(rects.filter((r) => r.c === '#000000' && r.h === 8).length > 100, 'its dark modules');
+    d.send({ ev: 'auth', state: 'error', msg: 'car internet is offline (MGU Store > Settings > Internet)' });
+    await sleep(100);
+    await drawn();
+    assert.ok(texts.indexOf('Car internet is offline') >= 0 && texts.some((s) => s.indexOf('MGU Store') >= 0), 'offline has an actionable message: ' + texts.join('|'));
+    d.send({ ev: 'auth', state: 'error', msg: 'timeout' });
+    await sleep(100);
+    await drawn();
+    assert.ok(texts.indexOf('YouTube did not answer') >= 0, 'timeout names the remote service');
+    d.send({ ev: 'auth', state: 'code', code: 'ABC-DEF-GHIJ', url: 'https://www.google.com/device', expires: 1800 });
+    await sleep(100);
     // a url longer than the QR holds: the fixed sign-in URL instead, never a throw
     d.send({ ev: 'auth', state: 'code', code: 'ABC-DEF-GHIJ', url: 'https://www.google.com/device?' + 'x'.repeat(80), expires: 1700 });
     await sleep(100);

@@ -1,8 +1,10 @@
 # RideTube
 
-> **Fork 0.3.8:** experimental Cyrillic-title and playback-error fixes; not tested on a car. The application ID is unchanged, so this can upgrade an existing RideTube installation. See [release notes](RELEASE-NOTES-RU.md) and the [technical specification](TECHNICAL-SPEC-RU.md). This fork is based on `25af2acee82d2a1c8140c25870a76f501f878af9`; upstream project and author credits remain below.
+> **Fork 0.3.9:** Cyrillic-title and playback-error fixes, plus car-internet diagnosis and a more resilient YouTube sign-in; not yet tested on a car. The application ID is unchanged, so this can upgrade an existing RideTube installation. See [release notes](RELEASE-NOTES-RU.md) and the [technical specification](TECHNICAL-SPEC-RU.md). This fork is based on `25af2acee82d2a1c8140c25870a76f501f878af9`; upstream project and author credits remain below.
 
-> **Fork install:** add `istt1899/ridetube:releases` and `JustAnotherPU/mgu-apps:releases` as sources in MGU Store. The daemon package is the unchanged upstream 0.3.8 release. The original installation instructions below refer to the upstream project.
+> **Fork install:** the local 0.3.9 packages can be installed through the MGU Store USB page. Once this version is published, add `istt1899/ridetube:releases` and `JustAnotherPU/mgu-apps:releases` as sources in MGU Store and update both RideTube and its service. The original installation instructions below refer to the upstream project.
+
+> **Local USB build:** `python kit/tools/build.py jap_ridetube`, `python tools/repack_service.py --base <verified upstream 0.3.8 service tgz>`, then `python tools/release.py`. The repacker changes the service JavaScript and manifest; it checks and reuses the original yt-dlp and decoder binaries byte for byte. The resulting `dist/release/` catalog can be copied to `mgu-repo/ridetube/` on a USB stick with artifact URLs made relative to that folder. Check the Store's Internet status before signing in.
 
 > **Experimental and unofficial.** RideTube is an unofficial client for YouTube. It is not affiliated with,
 > endorsed by or sponsored by Google or YouTube. Use it at your own risk. You are responsible for following
@@ -101,6 +103,7 @@ One car only so far. Reports from other cars are welcome in the issues.
 ```sh
 node kit/tools/test_runtime.js && node kit/tools/test_life.js && node kit/tools/test_parked.js \
   && node kit/tools/test_qr.js
+(cd native/jap-ridetube-d && node test/test_network.js && node test/test_account_version.js)
 (cd native/jap-ridetube-d && node test/test_ytd.js && node test/test_thumb.js && python3.12 -I test/test_ytfetch.py)
 (cd native/ytdec && make test && make target)     # make target needs Docker
 ```

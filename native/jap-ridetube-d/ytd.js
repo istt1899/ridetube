@@ -57,6 +57,8 @@ function defaults() {
         headMarginMs: 1500,  // on the head file: wait for audio.m4a this close to the head's end
         thumbMax: 150,
         ytTimeoutMs: 10000,
+        authTimeoutMs: 25000, // the TV page is large and may be slow over the car's uplink
+        networkRetryMs: 5500, // mgu-uplink notices a newly registered fetch uid within 5 s
         keep: 0,             // played videos kept in the cache (0: deleted once played; nothing is kept for offline)
         watchdogMs: 5000,
         tickMs: 5000,
@@ -281,8 +283,9 @@ function fetchRequest(o, uid, req) {
 // Tokens live in accountFile (0600, written atomically) and never cross the ctl socket or the log.
 const YT = 'https://www.youtube.com';
 const TV_UA = 'Mozilla/5.0 (Linux; Tizen 2.4.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/2.4.0 TV Safari/538.1';
-const TV_CLIENT = { clientName: 'TVHTML5', clientVersion: '7.20251101.10.00', hl: 'en' };
+const TV_CLIENT = { clientName: 'TVHTML5', clientVersion: '7.20261102.18.00', hl: 'en' };
 const CRED_RE = /clientId:"([-\w]+\.apps\.googleusercontent\.com)",\n?[$\w]+:"([-\w]+)"/;
+const TV_VERSION_RE = /clientVersion:"(7\.\d{8}\.\d+\.\d+)"/;
 const SCOPE = 'http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content';
 const TOKEN_URL = YT + '/o/oauth2/token';
 const FEEDS = { home: 'FEwhat_to_watch', subs: 'FEsubscriptions', wl: 'VLWL' };
@@ -454,6 +457,11 @@ Account.prototype.json = function (method, url, body, headers) {
         return { status: r.status, j: j };
     });
 };
+Account.prototype.client = function () {
+    const a = this.load();
+    const ver = (a && a.ver) || (this.cred && this.cred.ver) || TV_CLIENT.clientVersion;
+    return Object.assign({}, TV_CLIENT, { clientVersion: ver });
+};
 Account.prototype.status = function () {
     if (this.load()) return { ev: 'auth', state: 'signed_in' };
     const p = this.pending;
@@ -468,11 +476,16 @@ Account.prototype.creds = async function () {
     });
     const page = await get(YT + '/tv');
     let m = CRED_RE.exec(page);
+    let v = TV_VERSION_RE.exec(page);
     const re = /src="(\/s\/[^"]+(?:\/base\.js|m=base))"/g;
     let s;
-    while (!m && (s = re.exec(page))) m = CRED_RE.exec(await get(YT + s[1]));
+    while ((!m || !v) && (s = re.exec(page))) {
+        const script = await get(YT + s[1]);
+        if (!m) m = CRED_RE.exec(script);
+        if (!v) v = TV_VERSION_RE.exec(script);
+    }
     if (!m) throw new Error('no client id in the TV page');
-    return { cid: m[1], sec: m[2] };
+    return { cid: m[1], sec: m[2], ver: v ? v[1] : TV_CLIENT.clientVersion };
 };
 // `auth`: signed in or a code still valid -> said again; else a new device code, then polled until used or expired
 Account.prototype.start = async function () {
@@ -497,7 +510,7 @@ Account.prototype.start = async function () {
         }
         const j = r.j || {};
         if (!j.user_code || !j.device_code) throw new Error('device code refused: ' + (j.error || r.status));
-        this.pending = { cid: c.cid, sec: c.sec, device: j.device_code, code: String(j.user_code), url: j.verification_url || 'https://www.google.com/device',
+        this.pending = { cid: c.cid, sec: c.sec, ver: c.ver, device: j.device_code, code: String(j.user_code), url: j.verification_url || 'https://www.google.com/device',
             interval: Number(j.interval) > 0 ? Number(j.interval) * 1000 : 5000, expires: Date.now() + (Number(j.expires_in) || 1800) * 1000 };
         this.log('sign-in: code issued');
         this.emit(this.status());
@@ -534,7 +547,7 @@ Account.prototype.pollOnce = async function (p) {
     const j = r.j || {};
     if (j.access_token) {
         this.pending = null;
-        this.save({ cid: p.cid, sec: p.sec, access: j.access_token, refresh: j.refresh_token || null, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 });
+        this.save({ cid: p.cid, sec: p.sec, ver: p.ver, access: j.access_token, refresh: j.refresh_token || null, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 });
         this.log('sign-in: signed in');
         return this.emit({ ev: 'auth', state: 'signed_in' });
     }
@@ -588,7 +601,7 @@ Account.prototype.refresh = async function (a, out) {
     throw new Error('refresh: ' + (j.error || r.status));
 };
 Account.prototype.browse = function (browseId, token) {
-    return this.json('POST', YT + '/youtubei/v1/browse', { context: { client: TV_CLIENT }, browseId: browseId }, { Authorization: 'Bearer ' + token });
+    return this.json('POST', YT + '/youtubei/v1/browse', { context: { client: this.client() }, browseId: browseId }, { Authorization: 'Bearer ' + token });
 };
 // `feed` {which: home|subs|wl} -> feed{which, items, shelves} or feed{which, error}
 Account.prototype.feed = function (which) {
@@ -790,7 +803,26 @@ Daemon.prototype.uid = function () {
 };
 // youtube.com, as the fetch uid
 Daemon.prototype.fetch = function (req) {
-    try { return fetchRequest(this.opts, this.uid(), req); } catch (e) { return Promise.reject(e); }
+    let uid;
+    try { uid = this.uid(); } catch (e) { return Promise.reject(e); }
+    // The system resolver alone cannot reach internet names on the MGU. The uplink
+    // removes this lease when offline; report that state before a misleading timeout.
+    const online = () => {
+        const lease = readJson(this.opts.leaseFile);
+        if (!lease || !Array.isArray(lease.dns) || !lease.dns.length)
+            throw new Error('car internet is offline (MGU Store > Settings > Internet)');
+    };
+    try { online(); } catch (e) { return Promise.reject(e); }
+    const signIn = /^https:\/\/www\.youtube\.com\/(?:tv(?:$|\?)|s\/.*(?:base\.js|m=base)|o\/oauth2\/)/.test(req.url);
+    const retryable = /^https:\/\/www\.youtube\.com\/(?:tv(?:$|\?)|s\/.*(?:base\.js|m=base)|o\/oauth2\/device\/code$)/.test(req.url);
+    const q = signIn ? Object.assign({}, req, { timeoutMs: Math.max(Number(req.timeoutMs) || 0, this.opts.authTimeoutMs) }) : req;
+    const go = () => fetchRequest(this.opts, uid, q);
+    return go().catch((e) => {
+        if (!retryable || e.message !== 'timeout') throw e;
+        // The first request may precede mgu-uplink's 5 s UID-rule reconciliation.
+        this.log('sign-in network timeout; retrying once');
+        return sleep(this.opts.networkRetryMs).then(() => { online(); return go(); });
+    });
 };
 // a helper (ytfetch.py, thumb.js) as the fetch uid, as fetchRequest spawns its child
 Daemon.prototype.spawnFetchUid = function (cmd, args, stdin) {
@@ -809,7 +841,7 @@ Daemon.prototype.ytc = function () {
 Daemon.prototype.trackStart = async function (c) {
     if (this.account.status().state !== 'signed_in') return;
     try {
-        const r = await this.account.json('POST', YT + '/youtubei/v1/player', { context: { client: TV_CLIENT }, videoId: c.id },
+        const r = await this.account.json('POST', YT + '/youtubei/v1/player', { context: { client: this.account.client() }, videoId: c.id },
             { Authorization: 'Bearer ' + await this.account.token(false) });
         const pt = (r.j && r.j.playbackTracking) || {};
         const pb = pt.videostatsPlaybackUrl && pt.videostatsPlaybackUrl.baseUrl, wt = pt.videostatsWatchtimeUrl && pt.videostatsWatchtimeUrl.baseUrl;
@@ -1100,7 +1132,7 @@ Daemon.prototype.prune = function () {
 Daemon.prototype.search = async function (q) {
     q = typeof q === 'string' ? q.trim() : '';
     if (!q) return this.emit({ ev: 'error', msg: 'empty search' });
-    const ask = (tok) => this.account.json('POST', YT + '/youtubei/v1/search', { context: { client: TV_CLIENT }, query: q },
+    const ask = (tok) => this.account.json('POST', YT + '/youtubei/v1/search', { context: { client: this.account.client() }, query: q },
         tok ? { Authorization: 'Bearer ' + tok } : null);
     let r;
     try {

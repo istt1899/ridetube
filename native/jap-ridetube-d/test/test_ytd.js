@@ -61,13 +61,14 @@ function mkVideo(id, opts) {
 const yt = { calls: [], inline: false, expiresIn: 1800, token: () => ({ error: 'authorization_pending' }), browse: null };
 const SECRETS = ['SeCrEt-1', 'DEV-CODE-XYZ', 'ACCESS-1', 'ACCESS-2', 'ACCESS-3', 'REFRESH-1'];
 const CRED = 'clientId:"123-abc.apps.googleusercontent.com",\nqz:"SeCrEt-1"';
+const TV_VER = '7.20261103.19.00';
 const fakeYt = async (method, url, headers, body) => {
     yt.calls.push({ method: method, url: url, headers: headers, body: body });
     const slow = Object.keys(yt.slow || {}).find((k) => url.endsWith(k));
     if (slow) await sleep(yt.slow[slow]);
     const json = (o, st) => ({ status: st || 200, body: JSON.stringify(o) });
-    if (url === 'https://www.youtube.com/tv') return { status: 200, body: yt.creds === false ? '<html></html>' : yt.inline ? 'a ' + CRED + ' b' : '<script src="/s/tv/x1/base.js"></script>' };
-    if (url === 'https://www.youtube.com/s/tv/x1/base.js') return { status: 200, body: 'var q={' + CRED + '};' };
+    if (url === 'https://www.youtube.com/tv') return { status: 200, body: yt.creds === false ? '<html></html>' : yt.inline ? 'a ' + CRED + ' clientVersion:"' + TV_VER + '" b' : '<script src="/s/tv/x1/base.js"></script>' };
+    if (url === 'https://www.youtube.com/s/tv/x1/base.js') return { status: 200, body: 'var q={' + CRED + ',clientVersion:"' + TV_VER + '"};' };
     if (url === 'https://www.youtube.com/o/oauth2/device/code' && yt.refuse > 0) { yt.refuse--; return json({ error: 'invalid_client' }, 401); }
     if (url === 'https://www.youtube.com/o/oauth2/device/code') return json({ device_code: 'DEV-CODE-XYZ', user_code: 'ABC-DEF-GHI', verification_url: 'https://www.google.com/device', interval: 0.03, expires_in: yt.expiresIn });
     if (url === 'https://www.youtube.com/o/oauth2/token') { const r = yt.token(body); return json(r, r.error ? 400 : 200); }
@@ -175,7 +176,7 @@ async function main() {
         const r = ytCalls('/youtubei/v1/search')[0];
         assert.strictEqual(r.method, 'POST');
         assert.strictEqual(r.headers, null, 'anonymous');
-        assert.deepStrictEqual(r.body, { context: { client: { clientName: 'TVHTML5', clientVersion: '7.20251101.10.00', hl: 'en' } }, query: 'bunny' });
+        assert.deepStrictEqual(r.body, { context: { client: { clientName: 'TVHTML5', clientVersion: '7.20261102.18.00', hl: 'en' } }, query: 'bunny' });
         yt.search = () => Promise.reject(new Error('ENETUNREACH'));
         c.send({ cmd: 'search', q: 'x' });
         await c.waitFor((x) => x.ev === 'error' && x.msg === 'search offline');
@@ -765,6 +766,13 @@ async function main() {
         await c.waitFor(authEv('signed_out'));
     });
 
+    await t('TV page with inline credentials also supplies the live client version', async () => {
+        yt.inline = true;
+        const creds = await d.account.creds();
+        assert.strictEqual(creds.ver, TV_VER);
+        yt.inline = false;
+    });
+
     await t('auth: creds from the base script, device code, polled until signed in; account 0600 in a dir others cannot list', async () => {
         c.clear(); yt.calls.length = 0;
         let polls = 0;
@@ -786,6 +794,7 @@ async function main() {
         assert.strictEqual(fs.statSync(path.dirname(acct)).mode & 0o077, 0, 'state dir stays 0700');
         const a = readAcct();
         assert.ok(a.access === 'ACCESS-1' && a.refresh === 'REFRESH-1' && a.exp > Date.now() + 71000e3);
+        assert.strictEqual(a.ver, TV_VER, 'TV client version is persisted with the account');
         assert.ok(!fs.existsSync(acct + '.tmp'));
         c.send({ cmd: 'auth_status' });
         await c.waitFor((x) => authEv('signed_in')(x) && c.evs.filter(authEv('signed_in')).length === 2);
@@ -794,6 +803,8 @@ async function main() {
     await t('feed subs: TVHTML5 browse with the token; video tiles only, each once, channel and length', async () => {
         c.clear(); yt.calls.length = 0;
         yt.browse = (h, b) => ok(BROWSE);
+        const cachedCred = d.account.cred;
+        d.account.cred = null; // a restarted daemon still uses the account's saved TV version
         c.send({ cmd: 'feed', which: 'subs' });
         const e = await c.waitFor((x) => x.ev === 'feed');
         const v1 = { id: 'VVVVVVVVVV1', title: 'First', channel: 'Chan A', duration_s: 2390, meta: ['1K views'] };
@@ -805,6 +816,8 @@ async function main() {
         assert.strictEqual(b.headers.Authorization, 'Bearer ACCESS-1');
         assert.strictEqual(b.body.browseId, 'FEsubscriptions');
         assert.strictEqual(b.body.context.client.clientName, 'TVHTML5');
+        assert.strictEqual(b.body.context.client.clientVersion, TV_VER);
+        d.account.cred = cachedCred;
         assert.strictEqual(ytCalls('/oauth2/token').length, 0, 'no refresh with 20 h left');
         c.send({ cmd: 'feed', which: 'wl' });
         await c.waitFor((x) => x.ev === 'feed' && x.which === 'wl');
@@ -814,6 +827,7 @@ async function main() {
         c.send({ cmd: 'search', q: 'bunny' });
         await c.waitFor((x) => x.ev === 'results');
         assert.strictEqual(ytCalls('/youtubei/v1/search')[0].headers.Authorization, 'Bearer ACCESS-1', 'signed in: searched with the token');
+        assert.strictEqual(ytCalls('/youtubei/v1/search')[0].body.context.client.clientVersion, TV_VER);
     });
 
     await t('token with < 5 min left refreshed before the browse; a 401 forces one more refresh', async () => {

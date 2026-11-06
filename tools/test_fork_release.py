@@ -17,7 +17,11 @@ for component in components.values():
     assert hashlib.sha256(data).hexdigest() == artifact['sha256']
     assert artifact['url'].startswith('https://github.com/istt1899/ridetube/releases/download/catalog/')
 app = components['jap_ridetube']
-assert app['version'] == '0.3.8'
+assert app['version'] == '0.3.9'
+service = components['jap-ridetube-d']
+assert service['version'] == '0.3.9'
+assert app['requires']['jap-ridetube-d'] == service['version']
+assert service['requires']['mgu-uplink'] == '0.7.3'
 with tarfile.open(root / app['artifact']['name']) as archive:
     names = archive.getnames()
     assert not any('oap-sdk' in name for name in names)
@@ -27,4 +31,10 @@ with tarfile.open(root / app['artifact']['name']) as archive:
                  'package/rhmiData/application.json', 'package/javascript/kit/app-spec.json'):
         doc = json.load(archive.extractfile(name))
         assert (doc.get('version') or doc.get('application', {}).get('version')) == app['version']
-print('ok: fork catalog URLs, hashes, app version, code, font and SDK exclusion')
+with tarfile.open(root / service['artifact']['name']) as archive:
+    manifest = json.load(archive.extractfile('component.json'))
+    assert manifest['version'] == service['version']
+    for entry in manifest['files']:
+        data = archive.extractfile('files/' + entry['path']).read()
+        assert hashlib.sha256(data).hexdigest() == entry['sha256']
+print('ok: fork catalog URLs, hashes, versions, uplink dependency, code, font and SDK exclusion')
