@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 import urllib.request
+import urllib.parse
 from fractions import Fraction
 
 ID_RE = re.compile(r'^[A-Za-z0-9_-]{11}$')
@@ -173,6 +174,134 @@ def install_dns(lease):
     getaddrinfo._lease = lease
     socket.getaddrinfo = getaddrinfo
     return servers
+
+
+# ---------------------------------------------------------------- proxy (same URL shape as the Node helper)
+# http://user:pass@host:port | socks5://... — set by the daemon through --proxy-file; googlevideo
+# (ranged_get) and yt-dlp then leave the car through it while DNS moves behind the proxy.
+
+def parse_proxy(raw):
+    """URL -> {type, host, port, user, pass, raw}; None when absent or unsupported."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    raw = raw.strip()
+    try:
+        u = urllib.parse.urlsplit(raw)
+    except ValueError:
+        return None
+    scheme = (u.scheme or '').lower()
+    if scheme not in ('http', 'https', 'socks5', 'socks5h'):
+        return None
+    try:
+        port = u.port or (8080 if scheme in ('http', 'https') else 1080)
+    except ValueError:
+        return None
+    if not u.hostname or not (1 <= port <= 65535):
+        return None
+    return {'type': 'socks5' if scheme.startswith('socks5') else 'http', 'host': u.hostname, 'port': port,
+            'user': urllib.parse.unquote(u.username or ''), 'pass': urllib.parse.unquote(u.password or ''), 'raw': raw}
+
+
+def proxy_from_file(path):
+    if not path:
+        return None
+    try:
+        with open(path) as f:
+            return parse_proxy(json.load(f).get('url'))
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _recv_exact(sock, n):
+    buf = b''
+    while len(buf) < n:
+        b = sock.recv(n - len(buf))
+        if not b:
+            raise OSError('socks: connection closed')
+        buf += b
+    return buf
+
+
+def socks5_connect(proxy, host, port, timeout):
+    """A stdlib SOCKS5 CONNECT: returns a socket tunneled to host:port (remote DNS when a name is given)."""
+    sock = socket.create_connection((proxy['host'], proxy['port']), timeout=timeout)
+    try:
+        methods = [0x00]
+        if proxy['user'] or proxy['pass']:
+            methods.append(0x02)
+        sock.sendall(bytes([0x05, len(methods)]) + bytes(methods))
+        ver, method = _recv_exact(sock, 2)
+        if ver != 0x05:
+            raise OSError(f'socks: bad version {ver}')
+        if method == 0x02:
+            u, p = proxy['user'].encode(), proxy['pass'].encode()
+            if len(u) > 255 or len(p) > 255:
+                raise OSError('socks: credentials over 255 B')
+            sock.sendall(bytes([0x01, len(u)]) + u + bytes([len(p)]) + p)
+            _aver, status = _recv_exact(sock, 2)
+            if status != 0x00:
+                raise OSError('socks: auth failed')
+        elif method != 0x00:
+            raise OSError('socks: no acceptable auth method')
+        hb = host.encode()
+        if len(hb) > 255:
+            raise OSError('socks: host name over 255 B')
+        sock.sendall(bytes([0x05, 0x01, 0x00, 0x03, len(hb)]) + hb + bytes([port >> 8 & 0xff, port & 0xff]))
+        hdr = _recv_exact(sock, 4)
+        if hdr[0] != 0x05 or hdr[1] != 0x00:
+            raise OSError(f'socks: connect failed, code {hdr[1]}')
+        if hdr[3] == 0x01:
+            _recv_exact(sock, 4)
+        elif hdr[3] == 0x03:
+            _recv_exact(sock, _recv_exact(sock, 1)[0])
+        elif hdr[3] == 0x04:
+            _recv_exact(sock, 16)
+        else:
+            raise OSError(f'socks: bad address type {hdr[3]}')
+        _recv_exact(sock, 2)  # the bound port
+        sock.settimeout(None)
+        return sock
+    except BaseException:
+        sock.close()
+        raise
+
+
+class ProxiedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection whose TCP goes through a SOCKS5 tunnel (urllib's ProxyHandler only speaks http)."""
+
+    def __init__(self, host, proxy=None, **kw):
+        self._rt_proxy = proxy
+        super().__init__(host, **kw)
+
+    def connect(self):
+        proxy = self._rt_proxy
+        if not proxy or proxy['type'] != 'socks5':
+            return super().connect()
+        sock = socks5_connect(proxy, self.host, self.port or 443, self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class ProxyHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, proxy, context=None):
+        super().__init__(context=context)
+        self._rt_proxy = proxy
+
+    def https_open(self, req):
+        def factory(host, **kw):
+            kw.setdefault('context', self._context)
+            return ProxiedHTTPSConnection(host, proxy=self._rt_proxy, **kw)
+        return self.do_open(factory, req)
+
+
+def url_opener(ctx, proxy):
+    handlers = []
+    if proxy and proxy['type'] == 'http':
+        handlers.append(urllib.request.ProxyHandler({'http': proxy['raw'], 'https': proxy['raw']}))
+    if proxy and proxy['type'] == 'socks5':
+        handlers.append(ProxyHTTPSHandler(proxy, context=ctx))
+    elif ctx:
+        handlers.append(urllib.request.HTTPSHandler(context=ctx))
+    return urllib.request.build_opener(*handlers)
 
 
 # ---------------------------------------------------------------- MP4 boxes
@@ -394,10 +523,11 @@ def flatten_m4a(src, dst, limit=None):
 
 
 def ranged_get(url, headers, dst, total, on_chunk=None, conns=AUDIO_CONNS, first=AUDIO_FIRST, chunk=AUDIO_CHUNK,
-               ctx=None, timeout=15, gate=None):
+               ctx=None, timeout=15, gate=None, opener=None):
     """total bytes of url into dst with conns parallel Range requests, handed out in file order; with gate (an Event)
     only the first connection runs until it is set.
     on_chunk(prefix, done): after each chunk, under a lock; prefix = the bytes written from 0 without a gap."""
+    op = opener or url_opener(ctx, None)
     ranges = [(0, min(first, total))]
     while ranges[-1][1] < total:
         ranges.append((ranges[-1][1], min(ranges[-1][1] + chunk, total)))
@@ -409,7 +539,7 @@ def ranged_get(url, headers, dst, total, on_chunk=None, conns=AUDIO_CONNS, first
         for attempt in range(3):
             try:
                 req = urllib.request.Request(url, headers=dict(headers, Range=f'bytes={s}-{e - 1}'))
-                with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                with op.open(req, timeout=timeout) as r:
                     if r.status != 206:
                         raise OSError(f'HTTP {r.status} to a Range request')
                     pos = s
@@ -663,6 +793,7 @@ def ydl_params(a, fmt, hook=None):
             'no_warnings': True, 'noplaylist': True, 'fixup': 'never', 'concurrent_fragment_downloads': 4,
             # the API's default is no retry: one 20 s stall (googlevideo pacing) ended the video; a retry resumes it
             'retries': 10, 'socket_timeout': 30,
+            'proxy': a.proxy['raw'] if a.proxy else None,  # yt-dlp wants the URL string; url_opener keeps the parsed dict
             'js_runtimes': {'node': {'path': a.node}}, 'remote_components': [],
             'progress_hooks': [hook] if hook else []}
 
@@ -766,7 +897,7 @@ def audio_ranged(a, ya, info, meta):
     ctx = ssl.create_default_context(cafile=CA if os.path.isfile(CA) else None)
     try:
         ranged_get(f['url'], f.get('http_headers') or {}, src, total, on_chunk, conns=AUDIO_CONNS, first=AUDIO_FIRST,
-                   chunk=AUDIO_CHUNK, ctx=ctx, gate=gate)
+                   chunk=AUDIO_CHUNK, ctx=ctx, gate=gate, opener=url_opener(ctx, a.proxy))
     except BaseException:
         os.remove(src)  # yt-dlp's fallback would take this holed file for a finished download (continuedl)
         raise
@@ -873,6 +1004,17 @@ def fetch(a):
 
 # ---------------------------------------------------------------- check (as root on the car)
 
+def check_proxy(a, line, url='https://www.youtube.com/robots.txt'):
+    """PASS/FAIL 'proxy' line of check(): robots.txt through the configured proxy."""
+    t = time.monotonic()
+    try:
+        ctx = ssl.create_default_context(cafile=CA if os.path.isfile(CA) else None)
+        with url_opener(ctx, a.proxy).open(url, timeout=10) as r:
+            line('proxy', r.status == 200, t, f"{a.proxy['type']} {a.proxy['host']}:{a.proxy['port']}, HTTP {r.status}")
+    except Exception as e:  # noqa: BLE001
+        line('proxy', False, t, e)
+
+
 def check(a):
     vid = a.id or DEFAULT_CHECK_ID
     if not ID_RE.match(vid):
@@ -891,26 +1033,29 @@ def check(a):
     os.makedirs(work, exist_ok=True)
     ok_all = []
 
-    def line(name, ok, t0, info=''):
-        ok_all.append(ok)
-        print(f"{'PASS' if ok else 'FAIL'} {name:<22} {time.monotonic() - t0:7.2f}s  {info}", flush=True)
+    def line(name, ok, t0, info='', required=True):
+        if required:
+            ok_all.append(ok)
+        label = 'PASS' if ok else ('FAIL' if required else 'INFO')
+        print(f"{label} {name:<22} {time.monotonic() - t0:7.2f}s  {info}", flush=True)
 
     t = time.monotonic()
     servers = install_dns(a.lease)
     try:
         ips = socket.getaddrinfo('www.youtube.com', 443)
-        line('dns', bool(servers), t, f"{ips[0][4][0]} via {servers or 'system resolver (no lease)'}")
+        # with a proxy set, the direct route is expected to fail: informational, not counted
+        line('dns', bool(servers), t, f"{ips[0][4][0]} via {servers or 'system resolver (no lease)'}", required=not a.proxy)
     except OSError as e:
-        line('dns', False, t, e)
+        line('dns', False, t, e, required=not a.proxy)
+    if a.proxy:
+        check_proxy(a, line)
     t = time.monotonic()
     try:
-        import ssl
-        import urllib.request
         ctx = ssl.create_default_context(cafile=CA if os.path.isfile(CA) else None)
         with urllib.request.urlopen('https://www.youtube.com/robots.txt', context=ctx, timeout=10) as r:
-            line('tls robots.txt', r.status == 200, t, f'HTTP {r.status} {len(r.read())} B')
+            line('tls robots.txt', r.status == 200, t, f'HTTP {r.status} {len(r.read())} B', required=not a.proxy)
     except Exception as e:  # noqa: BLE001
-        line('tls robots.txt', False, t, e)
+        line('tls robots.txt', False, t, e, required=not a.proxy)
     t = time.monotonic()
     try:
         v = subprocess.run([a.node, '--version'], capture_output=True, text=True, timeout=10).stdout.strip()
@@ -932,7 +1077,8 @@ def check(a):
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     cmd = [sys.executable, '-I', os.path.abspath(__file__), 'fetch', vid, out, '--cache-dir', cache,
-           '--height', str(a.height), '--node', a.node, '--lease', a.lease] + (['--pyz', a.pyz] if a.pyz else [])
+           '--height', str(a.height), '--node', a.node, '--lease', a.lease] + (['--pyz', a.pyz] if a.pyz else []) \
+        + (['--proxy-file', a.proxy_file] if a.proxy_file else [])
     t = time.monotonic()
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, env={}, cwd='/')
     t_audio = t_head = t_lead = t_dl = None  # t_dl: first progress event, after yt-dlp's 'sleep as required by the site'
@@ -996,7 +1142,10 @@ def main(argv=None):
     ap.add_argument('--pyz')
     ap.add_argument('--uid', type=int)
     ap.add_argument('--info')
+    ap.add_argument('--proxy-file', dest='proxy_file',
+                    help='daemon-written 0600 JSON {"url": ...}; ranged audio and yt-dlp go through it')
     a = ap.parse_args(argv)
+    a.proxy = proxy_from_file(a.proxy_file)
     if a.cmd == 'check':
         return check(a)
     if a.cmd == 'serve':
@@ -1009,7 +1158,8 @@ def main(argv=None):
             return 0  # the daemon closed us unused
         if not isinstance(job, list) or not job or job[0] not in ('fetch', 'extract'):
             fail('bad job')
-        return main([str(x) for x in job])
+        # the job line never carries credentials: keep this warm process' --proxy-file
+        return main([str(x) for x in job] + (['--proxy-file', a.proxy_file] if a.proxy_file else []))
     if not a.id or not a.dir:
         fail('usage: fetch|extract <id> <dir|info.json> --cache-dir <d>')
     return extract_cmd(a) if a.cmd == 'extract' else fetch(a)

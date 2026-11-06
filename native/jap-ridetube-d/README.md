@@ -43,6 +43,28 @@ Every internet request runs as the daemon's fetch uid (below, "Internet: the fet
   resamples to 320x180 if needed and writes 230400 bytes RGBA on stdout. DNS: the uplink lease's
   servers (`--lease`, default `/run/mgu-uplink/lease.json`), else the system resolver.
 
+## Proxy (0.3.11)
+
+When YouTube is unreachable from the car's own network (a phone hotspot in a throttled region,
+for example), an admin can send all of the service's YouTube traffic through an HTTP CONNECT or
+SOCKS5 proxy. It applies to every egress: the TV sign-in page, `youtubei` search/feeds, OAuth
+tokens, SponsorBlock, `i.ytimg.com` thumbnails (`thumb.js --proxy-file`), and both the yt-dlp
+download and the ranged audio (`ytfetch.py --proxy-file`) to `googlevideo`.
+
+Set it with one root-owned file on the head unit:
+
+    printf '{"url": "socks5://user:pass@host:port"}\n' > /var/opt/jap-ridetube-d/state/proxy.json
+    chmod 600 /var/opt/jap-ridetube-d/state/proxy.json
+    systemctl restart jap-ridetube-d.service
+
+Schemes `http://` and `socks5://` (default ports 8080/1080). The daemon re-reads the file when it
+changes; deleting it restores direct connections. With a proxy set, DNS resolves behind the proxy
+and the `mgu-uplink` lease preflight is skipped — any working internet on the car is enough.
+Credentials never appear in argv/env: the daemon passes the parsed proxy to `ytd.js --fetch`
+inside the stdin JSON, and leaves a 0600 copy owned by the fetch uid at `cache/proxy.json` for
+`thumb.js` and `ytfetch.py`. `proxy.js` (Node, dependency-free) and the SOCKS5 client in
+`ytfetch.py` implement the two tunnels; `ytfetch.py check` prints a `proxy` line next to `dns`.
+
 ## Updating yt-dlp
 
 `ytdlp.pyz` is built from the official yt-dlp zipapp of a pinned GitHub release
@@ -189,4 +211,4 @@ Requires (catalog `requires`, installed first): mgu-deploy 0.7.0, mgu-python 1.0
 mgu-render 0.6.11 (the video layer).
 
 Overrides (tests): `MGU_YT_SOMEIP`, `MGU_YT_SRCGEN`, `MGU_YT_YTDEC`, `MGU_YT_CACHE`,
-`MGU_YT_LOGDIR`, `MGU_YT_SOCK`, `MGU_YT_STATE`, `MGU_YT_ACCOUNT`, or the `Daemon` constructor options.
+`MGU_YT_LOGDIR`, `MGU_YT_SOCK`, `MGU_YT_STATE`, `MGU_YT_ACCOUNT`, `MGU_YT_PROXY`, or the `Daemon` constructor options.

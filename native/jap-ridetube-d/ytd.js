@@ -11,9 +11,11 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const https = require('https');
+const tls = require('tls');
 const crypto = require('crypto');
 const cp = require('child_process');
 const readline = require('readline');
+const proxyMod = require('./proxy.js');
 
 const ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const SOURCE_ID = 1046, SINK_ID = 1024;
@@ -33,6 +35,9 @@ function defaults() {
         sock: env.MGU_YT_SOCK || '/run/jap-ridetube-d/ctl.sock',
         sockGid: 12202, // tm_oap_app
         accountFile: env.MGU_YT_ACCOUNT || '/var/opt/jap-ridetube-d/state/account.json',
+        // an admin-written {"url": "http://user:pass@host:port"} (0600 root). When it parses, all
+        // of the service's YouTube traffic goes through it and the uplink preflight is skipped.
+        proxyFile: env.MGU_YT_PROXY || '/var/opt/jap-ridetube-d/state/proxy.json',
         ytRequest: null,     // null: each request in a child as the fetch uid (fetchRequest)
         // the fetch uid's pick (pickFetchUid) and the helper it runs
         stateDir: env.MGU_YT_STATE || '/var/opt/jap-ridetube-d/state',
@@ -242,7 +247,8 @@ function pickFetchUid(o) {
 }
 // one request in a child as uid (fetchCmd: ytd.js --fetch). The request, secrets and all, goes on its stdin
 // (argv and env show in ps); {status, body} or {error} comes back on its stdout. Killed past the timeout.
-function fetchRequest(o, uid, req) {
+// proxyUrl (the raw URL string): rides inside the stdin JSON, as credentials may not show in argv/env.
+function fetchRequest(o, uid, req, proxyUrl) {
     return new Promise(function (resolve, reject) {
         let child;
         try {
@@ -274,7 +280,7 @@ function fetchRequest(o, uid, req) {
             if (r.error) return finish(new Error(r.error));
             return finish(null, { status: r.status, body: String(r.body) });
         });
-        child.stdin.end(JSON.stringify(req));
+        child.stdin.end(JSON.stringify(proxyUrl ? Object.assign({}, req, { proxy: proxyUrl }) : req));
     });
 }
 
@@ -293,15 +299,18 @@ const FEEDS = { home: 'FEwhat_to_watch', subs: 'FEsubscriptions', wl: 'VLWL' };
 const FEED_MAX = 50;
 
 // method, url, headers, body (JSON or null) -> {status, body (utf8)}; no redirects (none seen on these URLs)
-function ytRequest(method, url, headers, body, timeoutMs, lookup) {
+// via (a parsed proxy from proxy.js): CONNECT/SOCKS5 to it first; DNS then happens behind the proxy.
+function ytRequest(method, url, headers, body, timeoutMs, lookup, via) {
     return new Promise(function (resolve, reject) {
         const u = require('url').parse(url);
         const data = body ? Buffer.from(JSON.stringify(body)) : null;
         const h = Object.assign({ 'User-Agent': TV_UA }, headers || {});
         if (data) { h['Content-Type'] = 'application/json'; h['Content-Length'] = data.length; }
-        let done = false, size = 0;
-        const fail = function (e) { if (!done) { done = true; clearTimeout(timer); reject(e); } };
-        const req = https.request({ hostname: u.hostname, port: u.port, path: u.path, method: method, headers: h, lookup: lookup }, function (res) {
+        let done = false, size = 0, req = null;
+        const fail = function (e) { if (!done) { done = true; clearTimeout(timer); try { if (req) req.abort(); } catch (x) { /* gone */ } reject(e); } };
+        const timer = setTimeout(function () { fail(new Error('timeout')); }, timeoutMs || 10000);
+        if (timer.unref) timer.unref();
+        const onResponse = function (res) {
             const chunks = [];
             res.on('data', function (c) {
                 size += c.length;
@@ -315,11 +324,24 @@ function ytRequest(method, url, headers, body, timeoutMs, lookup) {
                 resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') });
             });
             res.on('error', fail);
-        });
-        const timer = setTimeout(function () { fail(new Error('timeout')); req.abort(); }, timeoutMs || 10000);
-        req.on('error', fail);
-        if (data) req.write(data);
-        req.end();
+        };
+        const start = function () {
+            if (done) return;
+            req = https.request({ hostname: u.hostname, port: u.port, path: u.path, method: method, headers: h, lookup: lookup, createConnection: cc || undefined }, onResponse);
+            req.on('error', fail);
+            if (data) req.write(data);
+            req.end();
+        };
+        let cc = null;
+        if (via) {
+            proxyMod.connect(via, u.hostname, Number(u.port) || 443, { timeoutMs: timeoutMs || 10000, lookup: lookup }, function (e, sock) {
+                if (e) return fail(e);
+                cc = function () { return tls.connect({ socket: sock, servername: u.hostname }); };
+                start();
+            });
+        } else {
+            start();
+        }
     });
 }
 
@@ -820,9 +842,13 @@ Daemon.prototype.uid = function () {
 Daemon.prototype.fetch = function (req) {
     let uid;
     try { uid = this.uid(); } catch (e) { return Promise.reject(e); }
+    const via = this.proxy();
     // The system resolver alone cannot reach internet names on the MGU. The uplink
     // removes this lease when offline; report that state before a misleading timeout.
+    // With a proxy configured the lease is not the uplink anymore: DNS and the route
+    // live behind the proxy, so a missing lease must not block the request.
     const online = () => {
+        if (via) return;
         const lease = readJson(this.opts.leaseFile);
         if (!lease || !Array.isArray(lease.dns) || !lease.dns.length)
             throw new Error('car internet is offline (MGU Store > Settings > Internet)');
@@ -831,7 +857,7 @@ Daemon.prototype.fetch = function (req) {
     const signIn = /^https:\/\/www\.youtube\.com\/(?:tv(?:$|\?)|s\/.*(?:base\.js|m=base)|o\/oauth2\/)/.test(req.url);
     const retryable = /^https:\/\/www\.youtube\.com\/(?:tv(?:$|\?)|s\/.*(?:base\.js|m=base)|o\/oauth2\/device\/code$)/.test(req.url);
     const q = signIn ? Object.assign({}, req, { timeoutMs: Math.max(Number(req.timeoutMs) || 0, this.opts.authTimeoutMs) }) : req;
-    const go = () => fetchRequest(this.opts, uid, q);
+    const go = () => fetchRequest(this.opts, uid, q, via ? this._proxyRaw : undefined);
     return go().catch((e) => {
         if (!retryable || e.message !== 'timeout') throw e;
         // The first request may precede mgu-uplink's 5 s UID-rule reconciliation.
@@ -839,6 +865,35 @@ Daemon.prototype.fetch = function (req) {
         return sleep(this.opts.networkRetryMs).then(() => { online(); return go(); });
     });
 };
+// the admin-configured proxy, re-read when proxy.json changes. The parsed value goes to the
+// children over stdin/0600 files; the daemon itself never proxies (it never talks to YouTube).
+Daemon.prototype.proxy = function () {
+    let st = null;
+    try { st = fs.statSync(this.opts.proxyFile); } catch (e) { /* absent: no proxy */ }
+    const mtime = st ? st.mtime.getTime() : -1;
+    if (this._proxyMtime === mtime) return this._proxy;
+    this._proxyMtime = mtime;
+    this._proxy = null;
+    this._proxyRaw = undefined;
+    if (!st) return null;
+    const src = readJson(this.opts.proxyFile);
+    const via = src && typeof src.url === 'string' ? proxyMod.parse(src.url) : null;
+    if (!via) { this.log('proxy: ' + this.opts.proxyFile + ' has no usable url; ignored'); return null; }
+    try {
+        const run = this.proxyRunFile();
+        fs.writeFileSync(run, JSON.stringify({ url: src.url.trim() }), { mode: 0o600 });
+        fs.chmodSync(run, 0o600);
+        this.chownFetch(run);
+    } catch (e) { this.log('proxy: ' + e.message); }
+    this.log('proxy: ' + via.type + ' ' + via.host + ':' + via.port + ' (' + this.opts.proxyFile + ')');
+    this._proxy = via;
+    this._proxyRaw = src.url.trim();
+    return via;
+};
+// the fetch-uid-readable copy for the helper children (cacheDir is 0711, the file 0600 their uid)
+Daemon.prototype.proxyRunFile = function () { return path.join(this.opts.cacheDir, 'proxy.json'); };
+// extra argv for the helper children; only a path, never credentials
+Daemon.prototype.proxyArgs = function () { return this.proxy() ? ['--proxy-file', this.proxyRunFile()] : []; };
 // a helper (ytfetch.py, thumb.js) as the fetch uid, as fetchRequest spawns its child
 Daemon.prototype.spawnFetchUid = function (cmd, args, stdin) {
     const ids = this.opts.noSetuid ? {} : { uid: this.uid(), gid: this.uid() };
@@ -958,7 +1013,7 @@ Daemon.prototype.spawnJob = function (job) {
         return s.child;
     }
     if (s) { try { s.child.kill('SIGKILL'); } catch (e) { /* gone */ } }
-    return this.spawnFetchUid(this.opts.fetcher, job);
+    return this.spawnFetchUid(this.opts.fetcher, job.concat(this.proxyArgs()));
 };
 // from tick: a spare while the app is in use and no fetch is starting; none past warmMs
 Daemon.prototype.keepWarm = function () {
@@ -969,7 +1024,7 @@ Daemon.prototype.keepWarm = function () {
     }
     if (this.spare || (this.preparing && this.state === 'preparing')) return;
     let child;
-    try { child = this.spawnFetchUid(this.opts.fetcher, ['serve', '--cache-dir', this.ytc()], true); } catch (e) { this.log('spare: ' + e.message); return; }
+    try { child = this.spawnFetchUid(this.opts.fetcher, ['serve', '--cache-dir', this.ytc()].concat(this.proxyArgs()), true); } catch (e) { this.log('spare: ' + e.message); return; }
     const s = this.spare = { child: child, warm: false };
     child.stdin.on('error', () => { /* it died: close says */ });
     readline.createInterface({ input: child.stdout }).on('line', (l) => { if (/"ev": ?"warm"/.test(l)) s.warm = true; });
@@ -1184,7 +1239,7 @@ Daemon.prototype.thumb = async function (id) {
 // thumb.js <id> as the fetch uid: exactly 320x180 RGBA on stdout, exit 0; killed after 10 s
 Daemon.prototype.thumbFetch = function (id) {
     return new Promise((resolve, reject) => {
-        const child = this.spawnFetchUid(this.opts.thumbCmd, [id]);
+        const child = this.spawnFetchUid(this.opts.thumbCmd, [id].concat(this.proxyArgs()));
         const out = [], err = [];
         let size = 0;
         const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) { /* gone */ } }, 10000);
@@ -1707,7 +1762,15 @@ if (require.main === module && process.argv[2] === '--fetch') {
     process.stdin.on('end', () => {
         let q;
         try { q = JSON.parse(input); } catch (e) { return out({ error: 'bad request' }); }
-        return ytRequest(q.method, q.url, q.headers, q.body, q.timeoutMs, uplinkLookup()).then(out, (e) => out({ error: e.message }));
+        let via = null;
+        if (q.proxy) {
+            // the daemon sends the raw URL string; a parsed object (with its type) is accepted too
+            via = (q.proxy && typeof q.proxy === 'object' && q.proxy.type)
+                ? q.proxy
+                : proxyMod.parse(typeof q.proxy === 'string' ? q.proxy : (q.proxy && q.proxy.url));
+            if (!via) return out({ error: 'bad proxy' });
+        }
+        return ytRequest(q.method, q.url, q.headers, q.body, q.timeoutMs, uplinkLookup(), via).then(out, (e) => out({ error: e.message }));
     });
 } else if (require.main === module) {
     const d = new Daemon();
