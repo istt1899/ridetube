@@ -164,6 +164,11 @@ async function clientAndModel() {
     await until(() => m.auth.state === 'signed_out', 2000, 'signed out');
     assert.ok(m.authStart() && m.auth.state === 'asking' && !m.authStart(), 'asked once');
     await lastIs(d, { cmd: 'auth' });
+    d.send({ ev: 'error', msg: 'internal error: sign-in failed' });
+    await until(() => m.auth.state === 'error', 2000, 'daemon error must end sign-in wait');
+    assert.ok(m.authStart(true), 'can retry after a daemon error');
+    assert.ok(m.checkAuth(m.authT + 90000, 90000) && m.auth.state === 'error', 'missing sign-in answer has a deadline');
+    assert.ok(m.authStart(true), 'can retry after the deadline');
     d.send({ ev: 'auth', state: 'code', code: 'ABC-DEF-GHIJ', url: 'https://www.google.com/device', expires: 1800 });
     await until(() => m.auth.code === 'ABC-DEF-GHIJ', 2000, 'code');
     assert.strictEqual(m.feed('home'), false, 'no feed while signed out');
@@ -503,6 +508,22 @@ async function appFrames() {
     await sleep(100);
     await drawn();
     assert.ok(texts.indexOf('YouTube did not answer') >= 0, 'timeout names the remote service');
+    d.send({ ev: 'auth', state: 'error', msg: 'sign-in TV credentials: timeout' });
+    await sleep(100);
+    await drawn();
+    assert.ok(texts.indexOf('YouTube TV page did not answer') >= 0, 'TV-page timeout identifies its stage');
+    d.send({ ev: 'auth', state: 'error', msg: 'sign-in device code: timeout' });
+    await sleep(100);
+    await drawn();
+    assert.ok(texts.indexOf('YouTube sign-in code did not arrive') >= 0, 'device-code timeout identifies its stage');
+    d.send({ ev: 'auth', state: 'error', msg: 'no answer from the RideTube service' });
+    await sleep(100);
+    await drawn();
+    assert.ok(texts.indexOf('RideTube service did not answer') >= 0, 'lost sign-in answer is visible: ' + texts.join('|'));
+    d.send({ ev: 'auth', state: 'unsupported' });
+    await sleep(100);
+    await drawn();
+    assert.ok(texts.indexOf('Signing in needs a newer jap-ridetube-d tool on the car') >= 0, 'old service is visible: ' + texts.join('|'));
     d.send({ ev: 'auth', state: 'code', code: 'ABC-DEF-GHIJ', url: 'https://www.google.com/device', expires: 1800 });
     await sleep(100);
     // a url longer than the QR holds: the fixed sign-in URL instead, never a throw

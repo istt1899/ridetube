@@ -58,6 +58,7 @@ function defaults() {
         thumbMax: 150,
         ytTimeoutMs: 10000,
         authTimeoutMs: 25000, // the TV page is large and may be slow over the car's uplink
+        authDeadlineMs: 75000, // a sign-in attempt must answer the app, even if a network request stalls
         networkRetryMs: 5500, // mgu-uplink notices a newly registered fetch uid within 5 s
         keep: 0,             // played videos kept in the cache (0: deleted once played; nothing is kept for offline)
         watchdogMs: 5000,
@@ -285,7 +286,7 @@ const YT = 'https://www.youtube.com';
 const TV_UA = 'Mozilla/5.0 (Linux; Tizen 2.4.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/2.4.0 TV Safari/538.1';
 const TV_CLIENT = { clientName: 'TVHTML5', clientVersion: '7.20261102.18.00', hl: 'en' };
 const CRED_RE = /clientId:"([-\w]+\.apps\.googleusercontent\.com)",\n?[$\w]+:"([-\w]+)"/;
-const TV_VERSION_RE = /clientVersion:"(7\.\d{8}\.\d+\.\d+)"/;
+const TV_VERSION_RE = /(?:clientVersion:"|INNERTUBE_CLIENT_VERSION\\?":\\?")(7\.\d{8}\.\d+\.\d+)/;
 const SCOPE = 'http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content';
 const TOKEN_URL = YT + '/o/oauth2/token';
 const FEEDS = { home: 'FEwhat_to_watch', subs: 'FEsubscriptions', wl: 'VLWL' };
@@ -479,7 +480,10 @@ Account.prototype.creds = async function () {
     let v = TV_VERSION_RE.exec(page);
     const re = /src="(\/s\/[^"]+(?:\/base\.js|m=base))"/g;
     let s;
-    while ((!m || !v) && (s = re.exec(page))) {
+    // A current /tv page already has both credentials and its escaped
+    // INNERTUBE_CLIENT_VERSION. Do not download the large base script just to
+    // refresh a version; issuing a device code should take one page request.
+    while (!m && (s = re.exec(page))) {
         const script = await get(YT + s[1]);
         if (!m) m = CRED_RE.exec(script);
         if (!v) v = TV_VERSION_RE.exec(script);
@@ -493,19 +497,30 @@ Account.prototype.start = async function () {
     if (this.starting) return undefined; // its answer comes
     this.starting = true;
     const g = this.gen;
+    const deadline = Date.now() + (Number(this.opts.authDeadlineMs) || 75000);
+    // Bound the entire attempt, not only each HTTP request. A late response cannot
+    // issue a code: only the awaited result below can change account state.
+    const step = (stage, work) => {
+        const left = deadline - Date.now();
+        if (left <= 0) return Promise.reject(new Error('sign-in ' + stage + ': timeout'));
+        return withTimeout(Promise.resolve().then(work), left, stage).catch((e) => {
+            const msg = e.message === stage + ' timed out' ? 'timeout' : e.message;
+            throw new Error('sign-in ' + stage + ': ' + msg);
+        });
+    };
     const ask = (c) => this.json('POST', YT + '/o/oauth2/device/code',
         { client_id: c.cid, scope: SCOPE, device_id: crypto.randomBytes(16).toString('hex'), device_model: 'ytlr::' });
     try {
         const cached = !!this.cred;
-        let c = this.cred || (this.cred = await this.creds());
+        let c = this.cred || (this.cred = await step('TV credentials', () => this.creds()));
         if (g !== this.gen) return undefined;
-        let r = await ask(c);
+        let r = await step('device code', () => ask(c));
         if (g !== this.gen) return undefined;
         if (cached && !(r.j && r.j.device_code)) { // the cached client refused: scrape the page again, once
             this.cred = null;
-            c = this.cred = await this.creds();
+            c = this.cred = await step('TV credentials', () => this.creds());
             if (g !== this.gen) return undefined;
-            r = await ask(c);
+            r = await step('device code', () => ask(c));
             if (g !== this.gen) return undefined;
         }
         const j = r.j || {};

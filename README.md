@@ -1,8 +1,8 @@
 # RideTube
 
-> **Fork 0.3.9:** Cyrillic-title and playback-error fixes, plus car-internet diagnosis and a more resilient YouTube sign-in; not yet tested on a car. The application ID is unchanged, so this can upgrade an existing RideTube installation. See [release notes](RELEASE-NOTES-RU.md) and the [technical specification](TECHNICAL-SPEC-RU.md). This fork is based on `25af2acee82d2a1c8140c25870a76f501f878af9`; upstream project and author credits remain below.
+> **Fork 0.3.10:** Cyrillic-title and playback-error fixes, car-internet diagnosis, and a bounded YouTube sign-in that reads the TV client version from the TV page without waiting for its large base script. The application ID is unchanged, so this can upgrade an existing RideTube installation. Sign-in still needs confirmation on the car. See [release notes](RELEASE-NOTES-RU.md) and the [technical specification](TECHNICAL-SPEC-RU.md). This fork is based on `25af2acee82d2a1c8140c25870a76f501f878af9`; upstream project and author credits remain below.
 
-> **Fork install:** in MGU Store, refresh the existing `istt1899/ridetube` Releases source with **Settings → Check now**, then update RideTube. The Store installs the matching 0.3.9 service and its declared dependencies. The original installation instructions below refer to the upstream project.
+> **Fork install:** in MGU Store, refresh the source that installed RideTube with **Settings → Check now**, then update RideTube. The Store installs the matching 0.3.10 service and its declared dependencies. The original installation instructions below refer to the upstream project.
 
 > **Local USB build:** `python kit/tools/build.py jap_ridetube`, `python tools/repack_service.py --base <verified upstream 0.3.8 service tgz>`, then `python tools/release.py`. The repacker changes the service JavaScript and manifest; it checks and reuses the original yt-dlp and decoder binaries byte for byte. The resulting `dist/release/` catalog can be copied to `mgu-repo/ridetube/` on a USB stick with artifact URLs made relative to that folder. Check the Store's Internet status before signing in.
 

@@ -34,6 +34,18 @@ const { Account } = require('../ytd.js');
         const browse = calls.filter((c) => c.url.endsWith('/youtubei/v1/browse')).pop();
         assert.strictEqual(browse.body.context.client.clientVersion, version);
         restarted.close();
+        // The live /tv page escapes this field inside its JSON. Once the
+        // credentials are inline, fetching base.js delays sign-in needlessly.
+        const fastCalls = [];
+        const fast = new Account(Object.assign({}, options, { ytRequest: async (_method, url) => {
+            fastCalls.push(url);
+            if (!url.endsWith('/tv')) throw new Error('base script should not be fetched');
+            return { status: 200, body: 'clientId:"123-abc.apps.googleusercontent.com",\nqz:"secret" '
+                + '\\"INNERTUBE_CLIENT_VERSION\\":\\"' + version + '\\"'
+                + '<script src="/s/player/very-large/base.js"></script>' };
+        } }), () => {});
+        assert.strictEqual((await fast.creds()).ver, version);
+        assert.strictEqual(fastCalls.length, 1, 'device sign-in needs only the TV page');
         console.log('ok: TV client version parsed, saved and reused after restart');
     } finally {
         a.close();

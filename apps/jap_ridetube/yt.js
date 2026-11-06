@@ -100,6 +100,7 @@ class Model {
         this.wantVideo = false;      // player shown and parked
         // the account: unknown (not asked yet) | asking | signed_out | code | signed_in | error | unsupported (older daemon)
         this.auth = { state: 'unknown', code: null, url: null, msg: null };
+        this.authT = 0;
         this.feeds = {};             // home|subs|wl -> {items, loading, error, t}
         this.pos = {};               // id -> {ms, total, done, title, channel, duration_s}: where each video was left
         this.resume = [];            // Continue watching: started, not finished, newest first
@@ -114,9 +115,10 @@ class Model {
 
     setConnected(on) {
         this.connected = on;
-        if (on) { this.send({ cmd: 'status' }); this.send({ cmd: 'auth_status' }); this.send({ cmd: 'positions' }); this.videoOn = null; this._video(); } else {
+        if (on) { this.authT = Date.now(); this.send({ cmd: 'status' }); this.send({ cmd: 'auth_status' }); this.send({ cmd: 'positions' }); this.videoOn = null; this._video(); } else {
             this.searching = false; this.state = 'idle'; this.pending.clear();
             this.auth = { state: 'unknown', code: null, url: null, msg: null };
+            this.authT = 0;
             Object.keys(this.feeds).forEach((w) => { this.feeds[w].loading = false; });
         }
         this._changed();
@@ -150,6 +152,7 @@ class Model {
             if (this.state === 'playing' && was !== 'playing' && was !== 'paused') { this.videoOn = null; this._video(); }
         } else if (m.ev === 'auth') {
             this.auth = { state: String(m.state || 'signed_out'), code: m.code ? String(m.code) : null, url: typeof m.url === 'string' ? m.url : null, msg: m.msg ? String(m.msg) : null };
+            if (this.auth.state !== 'asking') this.authT = 0;
             if (this.auth.state !== 'signed_in') { this.feeds = {}; this.chans = null; this.chan = null; this._prune(); }   // signed out: nobody's feed left on screen
         } else if (m.ev === 'channels') {
             if (!this.chans) return;
@@ -199,9 +202,10 @@ class Model {
             if (typeof m.total === 'number') this.total = m.total;
         } else if (m.ev === 'error') {
             // a daemon older than the account commands: no sign-in, nothing wrong with playback
-            if (/^unknown cmd (auth|auth_status|sign_out|feed)$/.test(m.msg)) { this.auth = { state: 'unsupported', code: null, url: null, msg: null }; this._changed(); return; }
+            if (/^unknown cmd (auth|auth_status|sign_out|feed)$/.test(m.msg)) { this.auth = { state: 'unsupported', code: null, url: null, msg: null }; this.authT = 0; this._changed(); return; }
             this.error = String(m.msg || 'error');
             if (this.searching) { this.searching = false; this.searchError = this.error; }
+            else if (this.auth.state === 'asking') { this.auth = { state: 'error', code: null, url: null, msg: this.error }; this.authT = 0; }
         } else return;
         this._changed();
     }
@@ -288,8 +292,21 @@ class Model {
         const st = this.auth.state;
         if (!this.connected || !(st === 'signed_out' || (retry && st === 'error'))) return false;
         this.auth = { state: 'asking', code: null, url: null, msg: null };
+        this.authT = Date.now();
         this._changed();
-        return this.send({ cmd: 'auth' });
+        if (this.send({ cmd: 'auth' })) return true;
+        this.auth = { state: 'error', code: null, url: null, msg: 'RideTube service is not connected' };
+        this.authT = 0;
+        this._changed();
+        return false;
+    }
+    /** A missing daemon answer must not leave the sign-in screen waiting forever. */
+    checkAuth(now, ms) {
+        if ((this.auth.state !== 'asking' && this.auth.state !== 'unknown') || !this.authT || now - this.authT < ms) return false;
+        this.auth = { state: 'error', code: null, url: null, msg: 'no answer from the RideTube service' };
+        this.authT = 0;
+        this._changed();
+        return true;
     }
     signOut() { return this.auth.state === 'signed_in' ? this.send({ cmd: 'sign_out' }) : false; }
     /** (re)load feed which (home|subs|wl); its items stay shown meanwhile */

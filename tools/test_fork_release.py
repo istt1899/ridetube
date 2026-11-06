@@ -22,9 +22,9 @@ for component in components.values():
     assert artifact['url'].startswith('https://github.com/istt1899/ridetube/releases/download/catalog/')
 app = components['jap_ridetube']
 assert tuple(map(int, components['jap-node22']['version'].split('.'))) >= tuple(map(int, components['jap-ridetube-d']['requires']['jap-node22'].split('.')))
-assert app['version'] == '0.3.9'
+assert app['version'] == '0.3.10'
 service = components['jap-ridetube-d']
-assert service['version'] == '0.3.9'
+assert service['version'] == '0.3.10'
 assert app['requires']['jap-ridetube-d'] == service['version']
 assert service['requires']['mgu-uplink'] == '0.7.3'
 direct = json.loads((root.parent.parent / 'catalog.json').read_text(encoding='utf-8'))

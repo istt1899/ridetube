@@ -58,6 +58,7 @@ const X0 = 136, TW = 320, TH = 180, PITCH = 348, PER_ROW = 4;   // tiles: 16:9 t
 const TILE_H = TH + 98, HEAD_H = 50, SHELF_GAP = 30, GRID_GAP = 22;   // a tile with its text; a shelf's title row
 const OVERLAY_MS = 4000;                                 // the player's controls hide this long after a tap (playing)
 const SEARCH_MS = 8000;                                  // a search with no answer by then is an error on screen
+const AUTH_MS = 90000;                                   // the daemon's sign-in deadline is shorter; keep a UI fallback
 const SUGGEST = ['Music', 'News', 'Cars', 'Podcasts', 'Comedy', 'Trailers'];
 const SLOTS = ['BTN_S1', 'BTN_S2', 'BTN_S3', 'BTN_S4', 'BTN_S5', 'BTN_S6'];
 const TABS = ['home', 'subs', 'wl'];
@@ -173,7 +174,7 @@ mgu.run({
             ui.text('MAIN_INFO', s);
         }
         info();
-        setInterval(() => { try { model.checkSearch(Date.now(), SEARCH_MS); model.checkFeeds(Date.now(), FEED_MS); if (ui.isVisible('MAIN')) info(); } catch (e) { log.error('info', e); } }, 1000);
+        setInterval(() => { try { const now = Date.now(); model.checkSearch(now, SEARCH_MS); model.checkFeeds(now, FEED_MS); model.checkAuth(now, AUTH_MS); if (ui.isVisible('MAIN')) info(); } catch (e) { log.error('info', e); } }, 1000);
 
         /* ---------- playing ---------- */
         // the decoder's picture size. Full-screen layout: the whole screen, for the full view (ytdec fits, or
@@ -644,9 +645,18 @@ mgu.run({
                     if (/car internet is offline/.test(a.msg || '')) {
                         title = 'Car internet is offline';
                         hint = 'Connect in MGU Store > Settings > Internet, then tap to retry';
+                    } else if (/sign-in TV credentials: timeout/.test(a.msg || '')) {
+                        title = 'YouTube TV page did not answer';
+                        hint = 'Check the car internet in MGU Store, then tap to retry';
+                    } else if (/sign-in device code: timeout/.test(a.msg || '')) {
+                        title = 'YouTube sign-in code did not arrive';
+                        hint = 'Check the car internet in MGU Store, then tap to retry';
                     } else if (/timeout/.test(a.msg || '')) {
                         title = 'YouTube did not answer';
                         hint = 'Check the car internet in MGU Store, then tap to retry';
+                    } else if (/no answer from the RideTube service/.test(a.msg || '')) {
+                        title = 'RideTube service did not answer';
+                        hint = 'Check RideTube service in MGU Store, then tap to retry';
                     } else {
                         title = 'Sign-in is not available (' + (a.msg || 'error') + ') - tap to retry';
                     }
