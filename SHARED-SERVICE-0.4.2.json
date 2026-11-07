@@ -1,0 +1,18 @@
+{
+  "id": "jap-ridetube-d",
+  "version": "0.4.2",
+  "source_repository": "https://github.com/istt1899/x3",
+  "source_tag": "mgu-video@0.4.2",
+  "source_directory": "media",
+  "build_script": "media/tools/build_release.py",
+  "artifact": {
+    "name": "jap-ridetube-d@0.4.2.tgz",
+    "size": 10653377,
+    "sha256": "d8da3ba5ff55d8574b0622a8884b471a733af5a1056ae4278a31da13d0759677",
+    "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.4.2.tgz"
+  },
+  "ffmpeg_corresponding_source": "https://github.com/istt1899/x3/releases/download/catalog/ffmpeg-9.0.2-mgu-media-sources.tar.xz",
+  "youtube_app_version": "0.3.14",
+  "mgu_hardware_tested": false,
+  "notes": "This source preserves the installed service origin. Canonical 0.4.x source is the linked X3 media tree; native/jap-ridetube-d here remains the historical YouTube-only 0.3.13 source. No account or proxy credentials are shipped."
+}

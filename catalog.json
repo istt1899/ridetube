@@ -6,43 +6,45 @@
       "kind": "app",
       "title": "RideTube",
       "description": "Video in the car: an unofficial client for YouTube. Your Home, Subscriptions and Watch later (signed in on the car), search, channels and chapters; the sound through the car's media player, the picture only while parked (a podcast view while driving). Needs the jap-ridetube-d tool.",
-      "version": "0.3.13",
+      "version": "0.3.14",
       "artifact": {
-        "name": "jap_ridetube@0.3.13.tgz",
-        "size": 1287022,
-        "sha256": "b54a15d94a80851de2a5350509f0725a3f1f71041d310d26184556eb59d60c15",
-        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube@0.3.13.tgz"
+        "name": "jap_ridetube@0.3.14.tgz",
+        "size": 1286917,
+        "sha256": "81521be11210be0f06e482745c60126b705ba894e8f38f75f60b34103508f6bf",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube@0.3.14.tgz"
       },
       "requires": {
-        "jap-ridetube-d": "0.3.13",
+        "jap-ridetube-d": "0.4.2",
         "mgu-render": "0.6.11",
-        "mgu-inputgate": "1.0.0"
+        "mgu-inputgate": "1.0.0",
+        "mgu-deploy": "0.7.11"
       },
       "uninstallable": true,
       "mguHmi": [
         "ID7"
       ],
-      "icon": "jap_ridetube.png",
+      "icon": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube.png",
       "iconSha256": "afbf63c28de964d4f249f062bdbddf853fe1e676cc8d62f59028ea0f1c6a9876"
     },
     {
       "id": "jap-ridetube-d",
       "kind": "tool",
       "title": "MGU Video service",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "description": "Тестовый общий проигрыватель: YouTube через прежний прокси, VK Видео и RUTUBE напрямую. Раздельные аккаунты.",
       "requires": {
         "mgu-deploy": "0.7.11",
         "mgu-python": "1.0.2",
         "jap-node22": "22.23.4",
         "mgu-render": "0.6.11",
-        "mgu-uplink": "0.7.3"
+        "mgu-uplink": "0.7.3",
+        "cluster-render": "0.4.0"
       },
       "artifact": {
-        "name": "jap-ridetube-d@0.4.1.tgz",
-        "size": 10649904,
-        "sha256": "dec49368a6bd1db4329ad2ce82c0de22e95ed73f80a73b0a49969cb50cb395a9",
-        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.4.1.tgz"
+        "name": "jap-ridetube-d@0.4.2.tgz",
+        "size": 10653377,
+        "sha256": "d8da3ba5ff55d8574b0622a8884b471a733af5a1056ae4278a31da13d0759677",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.4.2.tgz"
       },
       "uninstallable": true,
       "mguHmi": [
