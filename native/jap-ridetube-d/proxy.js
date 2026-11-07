@@ -52,9 +52,10 @@ function readReply(socket, predicate, cap, onEarly, done) {
     const finish = (err, reply, rest) => {
         if (finished) return;
         finished = true;
-        socket.off('data', onData);
-        socket.off('error', onErr);
-        socket.off('timeout', onTimeout);
+        // EventEmitter.off was added in Node 10; the MGU daemon runs Node 8.
+        socket.removeListener('data', onData);
+        socket.removeListener('error', onErr);
+        socket.removeListener('timeout', onTimeout);
         done(err, reply, rest);
     };
     const onData = (d) => {

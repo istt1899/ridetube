@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Bump the app artifact's version without a kit rebuild (the app's code is unchanged).
 
-Reads the verified jap_ridetube@0.3.10 release artifact, replaces the version in every
+Reads the verified jap_ridetube@0.3.12 release artifact, replaces the version in every
 file that carries it (package.json, npm-shrinkwrap.json, rhmiData/application.json,
 javascript/kit/app-spec.json), and repacks deterministically (sorted members, uid/gid 0,
-one mtime). Refuses any other 0.3.10 occurrence or content change.
+one mtime). Refuses any other 0.3.12 occurrence or content change.
 
-    python tools/patch_app_version.py            # writes dist/release/jap_ridetube@0.3.11.tgz
+    python tools/patch_app_version.py            # writes dist/release/jap_ridetube@0.3.13.tgz
     python tools/patch_app_version.py --check    # list what would change
 """
 import argparse
@@ -19,9 +19,9 @@ import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BASE = ROOT.parent / 'RideTube-artifacts' / 'jap_ridetube@0.3.11.tgz'
-BASE_SHA256 = '61685ce047aefb88b61a86146ef580a2b2a6669285584a38b084b1ce2fee6a88'
-OLD, NEW = '0.3.11', '0.3.12'
+BASE = ROOT.parent / 'RideTube-artifacts' / 'jap_ridetube@0.3.12.tgz'
+BASE_SHA256 = '8c6294add1290c26e9135dc648614da59a6bdc65222214b6a7083c3d83a2f832'
+OLD, NEW = '0.3.12', '0.3.13'
 VERSION_FILES = {
     'package/package.json',
     'package/npm-shrinkwrap.json',
@@ -53,7 +53,7 @@ def main():
             continue
         if OLD.encode() in blob:
             if name not in VERSION_FILES:
-                raise SystemExit('0.3.10 outside the known version files: ' + name)
+                raise SystemExit(OLD + ' outside the known version files: ' + name)
             j = json.loads(blob)
             holder = j['application'] if name == 'package/rhmiData/application.json' else j
             if holder.get('version') != OLD:

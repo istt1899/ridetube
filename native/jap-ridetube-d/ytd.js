@@ -298,14 +298,19 @@ const TOKEN_URL = YT + '/o/oauth2/token';
 const FEEDS = { home: 'FEwhat_to_watch', subs: 'FEsubscriptions', wl: 'VLWL' };
 const FEED_MAX = 50;
 
-// method, url, headers, body (JSON or null) -> {status, body (utf8)}; no redirects (none seen on these URLs)
+// method, url, headers, body (object or null) -> {status, body (utf8)}.
+// OAuth accepts form fields; InnerTube uses JSON. No redirects on these URLs.
 // via (a parsed proxy from proxy.js): CONNECT/SOCKS5 to it first; DNS then happens behind the proxy.
 function ytRequest(method, url, headers, body, timeoutMs, lookup, via) {
     return new Promise(function (resolve, reject) {
         const u = require('url').parse(url);
-        const data = body ? Buffer.from(JSON.stringify(body)) : null;
+        const oauth = /^\/o\/oauth2\//.test(u.pathname);
+        const data = body ? Buffer.from(oauth ? require('querystring').stringify(body) : JSON.stringify(body)) : null;
         const h = Object.assign({ 'User-Agent': TV_UA }, headers || {});
-        if (data) { h['Content-Type'] = 'application/json'; h['Content-Length'] = data.length; }
+        if (data) {
+            h['Content-Type'] = oauth ? 'application/x-www-form-urlencoded' : 'application/json';
+            h['Content-Length'] = data.length;
+        }
         let done = false, size = 0, req = null;
         const fail = function (e) { if (!done) { done = true; clearTimeout(timer); try { if (req) req.abort(); } catch (x) { /* gone */ } reject(e); } };
         const timer = setTimeout(function () { fail(new Error('timeout')); }, timeoutMs || 10000);
@@ -327,7 +332,10 @@ function ytRequest(method, url, headers, body, timeoutMs, lookup, via) {
         };
         const start = function () {
             if (done) return;
-            req = https.request({ hostname: u.hostname, port: u.port, path: u.path, method: method, headers: h, lookup: lookup, createConnection: cc || undefined }, onResponse);
+            // A custom connection has no HTTPS agent to supply its default port.
+            // Without this, Node sends Host: www.youtube.com:80 over the TLS tunnel.
+            req = https.request({ hostname: u.hostname, port: Number(u.port) || 443, defaultPort: 443,
+                path: u.path, method: method, headers: h, lookup: lookup, createConnection: cc || undefined }, onResponse);
             req.on('error', fail);
             if (data) req.write(data);
             req.end();

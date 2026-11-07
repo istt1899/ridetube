@@ -259,7 +259,9 @@ def socks5_connect(proxy, host, port, timeout):
         else:
             raise OSError(f'socks: bad address type {hdr[3]}')
         _recv_exact(sock, 2)  # the bound port
-        sock.settimeout(None)
+        # Keep the caller's deadline for the TLS handshake and response reads too.
+        # Clearing it here makes a stalled proxy hang audio ranges indefinitely.
+        sock.settimeout(timeout)
         return sock
     except BaseException:
         sock.close()

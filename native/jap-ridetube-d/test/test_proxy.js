@@ -13,6 +13,8 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // the origin below wears a test
 const proxyMod = require('../proxy.js');
 const cp = require('child_process');
 const { Daemon, ytRequest } = require('../ytd.js');
+// The harness uses modern test APIs; the actual service helper can run under Node 8.
+const fetchNode = process.env.MGU_TEST_NODE || process.execPath;
 
 const CRED = { user: 'rt', pass: 's3cret' };
 const EXPECTED_AUTH = 'Basic ' + Buffer.from(CRED.user + ':' + CRED.pass).toString('base64');
@@ -21,6 +23,7 @@ function tlsOrigin() {
     const cert = fs.readFileSync(path.join(__dirname, 'fixtures', 'cert.pem'));
     const key = fs.readFileSync(path.join(__dirname, 'fixtures', 'key.pem'));
     const seen = [];
+    const requests = [];
     const server = tls.createServer({ cert, key }, (s) => {
         s.on('error', () => { /* RST from a gone client */ });
         let buf = '';
@@ -29,16 +32,20 @@ function tlsOrigin() {
             const end = buf.indexOf('\r\n\r\n');
             if (end < 0) return;
             const head = buf.slice(0, end).split('\r\n');
+            const length = Number((/^Content-Length: (\d+)$/im.exec(head.join('\r\n')) || [0, 0])[1]);
+            if (Buffer.byteLength(buf.slice(end + 4), 'latin1') < length) return;
+            requests.push({ headers: head.join('\r\n'), body: buf.slice(end + 4, end + 4 + length) });
             seen.push(head[0]);
             s.end('HTTP/1.1 200 OK\r\nContent-Length: 9\r\nConnection: close\r\n\r\norigin-ok');
         });
     });
-    return new Promise((r) => { server.listen(0, '127.0.0.1', () => r({ server, seen, port: server.address().port })); });
+    return new Promise((r) => { server.listen(0, '127.0.0.1', () => r({ server, seen, requests, port: server.address().port })); });
 }
 
 // One stub speaking both protocols on two ports; records handshakes, tunnels bytes to the target.
-function stubProxy() {
+function stubProxy(originPort) {
     const events = [];
+    const localTarget = (host) => host === 'origin.test.invalid' || host === 'i.ytimg.com';
     const http = net.createServer((c) => {
         c.on('error', () => { /* EPIPE/RST when a failing client goes away */ });
         let buf = Buffer.alloc(0);
@@ -56,7 +63,7 @@ function stubProxy() {
                 c.end('HTTP/1.1 407 Proxy Auth Required\r\nProxy-Authenticate: Basic\r\nContent-Length: 0\r\n\r\n');
                 return;
             }
-            const target = net.connect(Number(m[2]), m[1], () => {
+            const target = net.connect(localTarget(m[1]) ? originPort : Number(m[2]), localTarget(m[1]) ? '127.0.0.1' : m[1], () => {
                 c.write('HTTP/1.1 200 OK\r\n\r\n');
                 if (buf.length > end + 4) target.write(buf.slice(end + 4));
                 c.pipe(target).pipe(c);
@@ -97,7 +104,7 @@ function stubProxy() {
                 else { c.end(Buffer.from([0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0])); return; }
                 const port = (d[off] << 8) | d[off + 1];
                 events.push(['socks-connect', host + ':' + port]);
-                const target = net.connect(port, host, () => {
+                const target = net.connect(localTarget(host) ? originPort : port, localTarget(host) ? '127.0.0.1' : host, () => {
                     c.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]));
                     if (d.length > off + 2) target.write(d.slice(off + 2));
                     c.pipe(target).pipe(c);
@@ -129,7 +136,7 @@ if (process.argv[2] === '--helper') {
 } else {
     (async () => {
         const origin = await tlsOrigin();
-        const stub = await stubProxy();
+        const stub = await stubProxy(origin.port);
 
         // parse()
         assert.deepStrictEqual(proxyMod.parse('http://u:p@10.0.0.1:8080'), { type: 'http', host: '10.0.0.1', port: 8080, user: 'u', pass: 'p' });
@@ -176,12 +183,15 @@ if (process.argv[2] === '--helper') {
         // the full daemon -> stdin -> ytd.js --fetch -> proxy -> origin chain, with the real child
         // (async spawn: the stubs live in this process, a spawnSync would starve them)
         const fetchChild = (payload) => new Promise((resolve, reject) => {
-            const ch = cp.spawn(process.execPath, [path.join(__dirname, '..', 'ytd.js'), '--fetch'], { stdio: ['pipe', 'pipe', 'pipe'] });
+            const ch = cp.spawn(fetchNode, [path.join(__dirname, '..', 'ytd.js'), '--fetch'], { stdio: ['pipe', 'pipe', 'pipe'] });
             let out = '', err = '';
             ch.stdout.on('data', (d) => { out += d; });
             ch.stderr.on('data', (d) => { err += d; });
             ch.on('error', reject);
-            ch.on('close', () => { try { resolve(JSON.parse(out || '{}')); } catch (e) { reject(new Error('child: ' + out + ' / ' + err)); } });
+            ch.on('close', (code) => {
+                if (code !== 0) return reject(new Error('fetch child exited ' + code + ': ' + err));
+                try { resolve(JSON.parse(out || '{}')); } catch (e) { reject(new Error('child: ' + out + ' / ' + err)); }
+            });
             ch.stdin.end(JSON.stringify(payload));
         });
         const childAns = await fetchChild({ method: 'GET', url: `https://127.0.0.1:${origin.port}/via-child`, headers: {}, timeoutMs: 8000,
@@ -194,8 +204,55 @@ if (process.argv[2] === '--helper') {
             proxy: `socks5://${CRED.user}:${CRED.pass}@127.0.0.1:${stub.socksPort}` });
         assert.deepStrictEqual(childOut2, { status: 200, body: 'origin-ok' }, 'socks child answer: ' + JSON.stringify(childOut2));
 
+        // This name resolves ONLY inside the proxy. A silently bypassed tunnel cannot pass.
+        for (const [scheme, port] of [['http', stub.httpPort], ['socks5', stub.socksPort]]) {
+            const answer = await fetchChild({ method: 'GET',
+                url: `https://origin.test.invalid/tunnel-only-${scheme}`, timeoutMs: 2000,
+                proxy: `${scheme}://${CRED.user}:${CRED.pass}@127.0.0.1:${port}` });
+            assert.deepStrictEqual(answer, { status: 200, body: 'origin-ok' });
+            assert.match(origin.requests[origin.requests.length - 1].headers, /^Host: origin\.test\.invalid\r?$/im,
+                'the HTTPS Host must not become :80 when a custom tunnel is used');
+
+            const jpeg = await require('../thumb.js').fetchJpeg('dQw4w9WgXcQ', undefined,
+                proxyMod.parse(`${scheme}://${CRED.user}:${CRED.pass}@127.0.0.1:${port}`));
+            assert.strictEqual(jpeg.toString(), 'origin-ok');
+            assert.match(origin.requests[origin.requests.length - 1].headers, /^Host: i\.ytimg\.com\r?$/im);
+        }
+
+        // Google's device/token endpoints require form data. JSON can return invalid_request.
+        for (const route of ['/o/oauth2/device/code', '/o/oauth2/token', '/youtubei/v1/search']) {
+            const body = { client_id: 'client+id', scope: 'one two', code: 'a&b=c' };
+            const answer = await fetchChild({ method: 'POST', url: `https://127.0.0.1:${origin.port}${route}`,
+                body, proxy: `socks5://${CRED.user}:${CRED.pass}@127.0.0.1:${stub.socksPort}` });
+            assert.strictEqual(answer.status, 200);
+            const request = origin.requests[origin.requests.length - 1];
+            if (route.startsWith('/o/oauth2/')) {
+                assert.match(request.headers, /Content-Type: application\/x-www-form-urlencoded/i);
+                assert.deepStrictEqual(require('querystring').parse(request.body), Object.assign(Object.create(null), body));
+            } else {
+                assert.match(request.headers, /Content-Type: application\/json/i);
+                assert.deepStrictEqual(JSON.parse(request.body), body);
+            }
+        }
+
+        // Exercise Daemon.fetch itself, including its empty child environment and proxy file.
+        // Only this fixture preload trusts the local self-signed test origin.
+        const realDaemon = new Daemon({ proxyFile, cacheDir: dir,
+            leaseFile: path.join(dir, 'absent-lease.json'), noSetuid: true, log: () => {},
+            fetchCmd: [fetchNode, '-r', path.join(__dirname, 'fixtures', 'local-tls.js'),
+                path.join(__dirname, '..', 'ytd.js'), '--fetch'] });
+        realDaemon.fetchUid = 12345;
+        for (const [scheme, port] of [['http', stub.httpPort], ['socks5', stub.socksPort]]) {
+            fs.writeFileSync(proxyFile, JSON.stringify({ url: `${scheme}://${CRED.user}:${CRED.pass}@127.0.0.1:${port}` }));
+            realDaemon._proxyMtime = undefined;
+            const answer = await realDaemon.fetch({ method: 'GET',
+                url: `https://127.0.0.1:${origin.port}/via-daemon-${scheme}`, timeoutMs: 8000 });
+            assert.deepStrictEqual(answer, { status: 200, body: 'origin-ok' });
+            assert.ok(origin.seen.some((l) => l.startsWith(`GET /via-daemon-${scheme} `)));
+        }
+
         // Node 8 compatibility: the process may lack a global URL entirely
-        const legacyOut = cp.spawnSync(process.execPath, ['-e',
+        const legacyOut = cp.spawnSync(fetchNode, ['-e',
             'delete global.URL; const p = require(process.argv[1]); console.log(JSON.stringify(p.parse(process.argv[2])))',
             path.join(__dirname, '..', 'proxy.js'), 'socks5://u:p@127.0.0.1:1080'], { encoding: 'utf8', timeout: 10000 });
         assert.ok(JSON.parse(legacyOut.stdout || 'null'), 'proxy.parse must not depend on the global URL (Node 8)');

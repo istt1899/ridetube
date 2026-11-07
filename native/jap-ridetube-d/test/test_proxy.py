@@ -162,6 +162,7 @@ class SocksStub:
 
     def _conn(self, c):
         try:
+            c.settimeout(5)
             n = self._exact(c, 2)[1]
             self._exact(c, n)
             c.sendall(b'\x05\x02')
@@ -175,9 +176,16 @@ class SocksStub:
                 c.sendall(b'\x01\x01')
                 return
             c.sendall(b'\x01\x00')
-            self._exact(c, 4)
-            hlen = self._exact(c, 1)[0]
-            host = self._exact(c, hlen).decode()
+            header = self._exact(c, 4)
+            if header[3] == 3:
+                hlen = self._exact(c, 1)[0]
+                host = self._exact(c, hlen).decode()
+            elif header[3] == 1:
+                host = socket.inet_ntop(socket.AF_INET, self._exact(c, 4))
+            elif header[3] == 4:
+                host = socket.inet_ntop(socket.AF_INET6, self._exact(c, 16))
+            else:
+                raise OSError('unsupported SOCKS address type')
             port = int.from_bytes(self._exact(c, 2), 'big')
             self.events.append(('connect', f'{host}:{port}'))
             t = socket.create_connection((host, port), timeout=10)
@@ -250,6 +258,7 @@ class ProxyTest(unittest.TestCase):
     def test_socks5_connect_ok_and_fail(self):
         sock = ytfetch.socks5_connect({'type': 'socks5', 'host': '127.0.0.1', 'port': self.socks_stub.port,
                                        'user': CRED[0], 'pass': CRED[1]}, '127.0.0.1', self.origin_port, 10)
+        self.assertEqual(sock.gettimeout(), 10, 'the tunnel must retain the request timeout')
         sock.close()
         self.assertTrue(any(e[0] == 'connect' and e[1].endswith(':' + str(self.origin_port))
                             for e in self.socks_stub.events))
@@ -271,6 +280,17 @@ class ProxyTest(unittest.TestCase):
             with open(dst, 'rb') as f:
                 self.assertEqual(len(f.read()), 1000)
         self.assertTrue(any(e[0] == 'connect' for e in self.http_stub.events))
+
+    def test_socks5_response_timeout(self):
+        # The TLS origin waits for a ClientHello. A read without sending it must time out,
+        # just like a silent proxy/origin during audio download, rather than wait forever.
+        proxy = ytfetch.parse_proxy(f'socks5://{CRED[0]}:{CRED[1]}@127.0.0.1:{self.socks_stub.port}')
+        sock = ytfetch.socks5_connect(proxy, '127.0.0.1', self.origin_port, 0.2)
+        try:
+            with self.assertRaises(socket.timeout):
+                sock.recv(1)
+        finally:
+            sock.close()
 
     def test_ranged_get_via_socks5(self):
         proxy = ytfetch.parse_proxy(f'socks5://{CRED[0]}:{CRED[1]}@127.0.0.1:{self.socks_stub.port}')
@@ -300,6 +320,31 @@ class ProxyTest(unittest.TestCase):
         self.assertEqual(lines[0][0], 'proxy')
         self.assertTrue(lines[0][1], lines[0])
 
+    def test_real_ytdlp_request_through_both_proxies(self):
+        """Use the shipped yt-dlp for a real request; construction alone misses proxy type errors."""
+        import types
+        pyz = os.environ.get('MGU_TEST_YTDLP')
+        if not pyz:
+            self.skipTest('set MGU_TEST_YTDLP to the shipped ytdlp.pyz')
+        self.assertTrue(Path(pyz).is_file(), pyz)
+        sys.path.insert(0, pyz)
+        try:
+            import yt_dlp
+            for scheme, stub in [('http', self.http_stub), ('socks5', self.socks_stub)]:
+                with self.subTest(scheme=scheme):
+                    before = len(stub.events)
+                    proxy = ytfetch.parse_proxy(f'{scheme}://{CRED[0]}:{CRED[1]}@127.0.0.1:{stub.port}')
+                    args = types.SimpleNamespace(cache_dir=None, node='node', proxy=proxy)
+                    params = ytfetch.ydl_params(args, None)
+                    params['socket_timeout'] = 5
+                    params['nocheckcertificate'] = True  # the local fixture only
+                    with yt_dlp.YoutubeDL(params) as ydl:
+                        with ydl.urlopen(f'https://127.0.0.1:{self.origin_port}/media') as response:
+                            self.assertEqual(response.read(), bytes(i % 251 for i in range(1000)))
+                    self.assertGreater(len(stub.events), before, 'request bypassed the proxy')
+        finally:
+            sys.path.remove(pyz)
+
 
 class YtdlpParamsTest(unittest.TestCase):
     def _args(self, proxy):
@@ -317,7 +362,8 @@ class YtdlpParamsTest(unittest.TestCase):
 
     def test_real_ytdlp_accepts_params(self):
         """Construct YoutubeDL with these params using the package's own yt-dlp, when available."""
-        pyz = Path(__file__).resolve().parents[4] / 'RideTube-artifacts' / 'ytdlp.pyz'
+        pyz = Path(os.environ.get('MGU_TEST_YTDLP') or
+                   Path(__file__).resolve().parents[4] / 'RideTube-artifacts' / 'ytdlp.pyz')
         if not pyz.is_file():
             self.skipTest('session-only ytdlp.pyz not extracted next to the repo clone')
         sys.path.insert(0, str(pyz))

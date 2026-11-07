@@ -1,5 +1,17 @@
 # Changelog
 
+## App 0.3.13, service 0.3.13
+
+- Fix proxy negotiation on the MGU's real Node 8 runtime: use `removeListener`, not Node 10's `off`.
+- Supply HTTPS port/defaultPort explicitly for tunneled API and thumbnail requests. The old
+  custom connection sent `Host: www.youtube.com:80`, causing device-code requests to fail.
+- Encode OAuth device/token requests as form fields; InnerTube requests remain JSON.
+- Preserve SOCKS5 socket timeouts through TLS and audio response reads instead of waiting forever.
+- Tests run the real fetch child under `MGU_TEST_NODE`, verify hosts reachable only via the proxy,
+  assert HTTPS Host headers and request encoding, and exercise the shipped yt-dlp with real requests.
+- PC live check through an authenticated local SOCKS5 proxy: TV credentials, device code,
+  pending token poll, search, JPEG decoding and audio/video ranges. Vehicle/VPS verification remains pending.
+
 ## App 0.3.12, service 0.3.12
 
 - Fixes found by an independent review of the published 0.3.11: the daemon now sends the raw

@@ -28,7 +28,8 @@ function fetchJpeg(id, lookup, via) {
     return new Promise((resolve, reject) => {
         const ask = (cc) => {
             const req = https.request({
-                host: 'i.ytimg.com', path: '/vi/' + id + '/mqdefault.jpg', lookup, headers: { 'user-agent': 'Mozilla/5.0' },
+                host: 'i.ytimg.com', port: 443, defaultPort: 443,
+                path: '/vi/' + id + '/mqdefault.jpg', lookup, headers: { 'user-agent': 'Mozilla/5.0' },
                 createConnection: cc || undefined
             }, (res) => {
                 // 404 is YouTube's placeholder for private/removed videos; redirects are not followed

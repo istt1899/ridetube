@@ -6,15 +6,15 @@
       "kind": "app",
       "title": "RideTube",
       "description": "Video in the car: an unofficial client for YouTube. Your Home, Subscriptions and Watch later (signed in on the car), search, channels and chapters; the sound through the car's media player, the picture only while parked (a podcast view while driving). Needs the jap-ridetube-d tool.",
-      "version": "0.3.12",
+      "version": "0.3.13",
       "artifact": {
-        "name": "jap_ridetube@0.3.12.tgz",
-        "size": 1311302,
-        "sha256": "8c6294add1290c26e9135dc648614da59a6bdc65222214b6a7083c3d83a2f832",
-        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube@0.3.12.tgz"
+        "name": "jap_ridetube@0.3.13.tgz",
+        "size": 1287022,
+        "sha256": "b54a15d94a80851de2a5350509f0725a3f1f71041d310d26184556eb59d60c15",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube@0.3.13.tgz"
       },
       "requires": {
-        "jap-ridetube-d": "0.3.12",
+        "jap-ridetube-d": "0.3.13",
         "mgu-render": "0.6.11",
         "mgu-inputgate": "1.0.0"
       },
@@ -30,12 +30,12 @@
       "kind": "tool",
       "title": "RideTube service",
       "description": "The car side of RideTube, an unofficial client for YouTube: yt-dlp (from its official release, run in mgu-python) fetches as the daemon's own internet uid; search, feeds and thumbnails on the car (jap-node22); audio through the BMW MediaPlayer, video decoded by ytdec into the mgu-render video layer; TV device sign-in; controlled by the RideTube app over /run/jap-ridetube-d/ctl.sock; an admin-set HTTP/SOCKS5 proxy in state/proxy.json carries its YouTube traffic",
-      "version": "0.3.12",
+      "version": "0.3.13",
       "artifact": {
-        "name": "jap-ridetube-d@0.3.12.tgz",
-        "size": 8788199,
-        "sha256": "f5b45a1b1a6b087f069f712645d77f8ce1ec8ba1cd3eb601a4c00f0b1661e0cc",
-        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.3.12.tgz"
+        "name": "jap-ridetube-d@0.3.13.tgz",
+        "size": 8784856,
+        "sha256": "984429e16be494d8e17e53f2606c7aaf38ea5ea049e86046f4aafe8cebf7bb75",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.3.13.tgz"
       },
       "requires": {
         "mgu-deploy": "0.7.0",

@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Repack the RideTube service on Windows without rebuilding its Linux binaries.
 
-The input is the verified previous release's mgu-deploy artifact (the 0.3.10 service the
-cars already run). Only component.json and the service's JavaScript/Python sources may
+The input is the verified previous release's mgu-deploy artifact (the pinned 0.3.12 service). Only component.json and the service's JavaScript/Python sources may
 change. Every other source file must still match that artifact (allowing Windows CRLF
 line endings); the two unavailable Linux build products are reused byte for byte. The
 output is a deterministic Store tool artifact.
 
     python tools/repack_service.py --check
     python tools/repack_service.py
-    python tools/repack_service.py --base path/to/jap-ridetube-d@0.3.10.tgz
+    python tools/repack_service.py --base path/to/jap-ridetube-d@0.3.12.tgz
 """
 
 import argparse
@@ -27,9 +26,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 COMPONENT = ROOT / 'native' / 'jap-ridetube-d'
-DEFAULT_BASE = ROOT.parent / 'RideTube-artifacts' / 'jap-ridetube-d@0.3.11.tgz'
-BASE_VERSION = '0.3.11'
-BASE_SHA256 = 'e282e5b99f63b72c48f222d29bc0005fdc7ac3a40cf62d6033242501a81cd6a8'
+DEFAULT_BASE = ROOT.parent / 'RideTube-artifacts' / 'jap-ridetube-d@0.3.12.tgz'
+BASE_VERSION = '0.3.12'
+BASE_SHA256 = 'f5b45a1b1a6b087f069f712645d77f8ce1ec8ba1cd3eb601a4c00f0b1661e0cc'
 # The manifest and the files a fork release may change. Everything else must match the base.
 REPLACED = frozenset({'component.json', 'files/ytd.js', 'files/thumb.js', 'files/ytfetch.py', 'files/proxy.js'})
 # These are products of the Linux build. They must come from the verified artifact.
