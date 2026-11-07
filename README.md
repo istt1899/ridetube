@@ -1,14 +1,18 @@
 # RideTube
 
-> **Общая служба 0.4.2:** в этом источнике теперь доступен тестовый MGU Video
-> service для прежнего YouTube 0.3.14 и отдельных VK Видео / RUTUBE 0.1.2.
+> **Общая служба 0.4.3:** в этом источнике теперь доступен тестовый MGU Video
+> service для прежнего YouTube 0.3.15 и отдельных VK Видео / RUTUBE 0.1.4.
 > Обновление через прежний источник сохраняет аккаунт и настройку прокси YouTube.
 > Новые приложения устанавливаются из `istt1899/x3`.
 > [Скачать и установить через Store](https://github.com/istt1899/x3/blob/main/media/INSTALL-STORE-RU.md).
-> [Точный исходный код общей службы](https://github.com/istt1899/x3/tree/mgu-video%400.4.2/media),
-> [происхождение и хэш](SHARED-SERVICE-0.4.2.json).
+> [Точный исходный код общей службы](https://github.com/istt1899/x3/tree/mgu-video%400.4.3/media),
+> [происхождение и хэш](SHARED-SERVICE-0.4.3.json).
 > Linux-проверка выполнена; личный вход и воспроизведение на вашем MGU ещё требуется проверить.
 > Сведения 0.3.13 ниже сохранены как исходная документация YouTube-only версии.
+
+> **Интернет и скорость:** выбор общий для трёх приложений. Встроенный канал BMW
+> включается после первичного аудита конкретного MGU; сейчас он ещё не проверен.
+> [Подробности](https://github.com/istt1899/x3/blob/main/media/NETWORK-SOURCES-RU.md).
 
 > **Fork 0.3.13:** HTTP/SOCKS5 proxy support with Node 8 compatibility, correct HTTPS Host headers, OAuth form requests and bounded SOCKS5 reads. Configure the proxy once over SSH; updating alone does not configure it. See [release notes](RELEASE-NOTES-RU.md). PC network checks passed; validation on the car is pending. The original project and author credits remain below.
 
