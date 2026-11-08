@@ -6,15 +6,15 @@
       "kind": "app",
       "title": "RideTube",
       "description": "Video in the car: an unofficial client for YouTube. Your Home, Subscriptions and Watch later (signed in on the car), search, channels and chapters; the sound through the car's media player, the picture only while parked (a podcast view while driving). Needs the jap-ridetube-d tool.",
-      "version": "0.3.15",
+      "version": "0.3.16",
       "artifact": {
-        "name": "jap_ridetube@0.3.15.tgz",
-        "size": 1290674,
-        "sha256": "8fdfc41ac0016732b61c0f4c65f9455e044a1cc65c75e4a626cf8f669f0ff8ae",
-        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube@0.3.15.tgz"
+        "name": "jap_ridetube@0.3.16.tgz",
+        "size": 1291133,
+        "sha256": "e675486d4d8bd7dcd38ddcd8158843237460fe0e29cae0d1c5edf97ade20c4c6",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube@0.3.16.tgz"
       },
       "requires": {
-        "jap-ridetube-d": "0.4.3",
+        "jap-ridetube-d": "0.4.4",
         "mgu-render": "0.6.11",
         "mgu-inputgate": "1.0.0",
         "mgu-deploy": "0.7.11"
@@ -30,7 +30,7 @@
       "id": "jap-ridetube-d",
       "kind": "tool",
       "title": "MGU Video service",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "description": "Тестовый общий проигрыватель: YouTube через прежний прокси, VK Видео и RUTUBE напрямую. Раздельные аккаунты.",
       "requires": {
         "mgu-deploy": "0.7.11",
@@ -41,10 +41,10 @@
         "cluster-render": "0.4.0"
       },
       "artifact": {
-        "name": "jap-ridetube-d@0.4.3.tgz",
-        "size": 10660366,
-        "sha256": "c6d4d5c46d6716202fa03c255ddaf2311acf0b6612d3df3184cfc9fdfecf9cef",
-        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.4.3.tgz"
+        "name": "jap-ridetube-d@0.4.4.tgz",
+        "size": 10662867,
+        "sha256": "13431cb9bb13241fb3f8d880d53dacd0645cc630bb6bb5d299dba2bd220a5c44",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.4.4.tgz"
       },
       "uninstallable": true,
       "mguHmi": [
