@@ -1,0 +1,21 @@
+{
+  "id": "jap-ridetube-d",
+  "version": "0.4.5",
+  "source_repository": "https://github.com/istt1899/x3",
+  "source_tag": "media-preview-0.4.5-r2",
+  "source_commit": "ad44500dc9de08cfd794ab68638d43f8f97e384d",
+  "source_directory": "media",
+  "build_script": "media/tools/build_release.py",
+  "artifact": {
+    "name": "jap-ridetube-d@0.4.5.tgz",
+    "size": 10664961,
+    "sha256": "8a2256f16c89adefb2f8361fc43a43a641f62dc679a418b283f1cae99980bb7f",
+    "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.4.5.tgz"
+  },
+  "ffmpeg_corresponding_source": "https://github.com/istt1899/x3/releases/download/catalog/ffmpeg-9.0.2-mgu-media-sources.tar.xz",
+  "youtube_app_version": "0.3.16",
+  "mgu_hardware_tested": false,
+  "native_bmw_channel_tested": false,
+  "linux_workflow": "https://github.com/istt1899/x3/actions/runs/42480669734",
+  "notes": "Canonical multi-provider source is the linked X3 media tree. This catalog preserves the installed RideTube service origin; no account or proxy credentials are shipped."
+}

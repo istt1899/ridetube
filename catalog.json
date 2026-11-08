@@ -14,7 +14,7 @@
         "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap_ridetube@0.3.16.tgz"
       },
       "requires": {
-        "jap-ridetube-d": "0.4.4",
+        "jap-ridetube-d": "0.4.5",
         "mgu-render": "0.6.11",
         "mgu-inputgate": "1.0.0",
         "mgu-deploy": "0.7.11"
@@ -30,7 +30,7 @@
       "id": "jap-ridetube-d",
       "kind": "tool",
       "title": "MGU Video service",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "description": "Тестовый общий проигрыватель: YouTube через прежний прокси, VK Видео и RUTUBE напрямую. Раздельные аккаунты.",
       "requires": {
         "mgu-deploy": "0.7.11",
@@ -41,10 +41,10 @@
         "cluster-render": "0.4.0"
       },
       "artifact": {
-        "name": "jap-ridetube-d@0.4.4.tgz",
-        "size": 10662867,
-        "sha256": "13431cb9bb13241fb3f8d880d53dacd0645cc630bb6bb5d299dba2bd220a5c44",
-        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.4.4.tgz"
+        "name": "jap-ridetube-d@0.4.5.tgz",
+        "size": 10664961,
+        "sha256": "8a2256f16c89adefb2f8361fc43a43a641f62dc679a418b283f1cae99980bb7f",
+        "url": "https://github.com/istt1899/ridetube/releases/download/catalog/jap-ridetube-d@0.4.5.tgz"
       },
       "uninstallable": true,
       "mguHmi": [
